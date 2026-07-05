@@ -1,0 +1,10 @@
+{
+  "name": "Course E-Attendance",
+  "description": "Professional attendance management system for courses with Google Sign-In and secure student/lecturer dashboard.",
+  "requestFramePermissions": [
+    "geolocation"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
