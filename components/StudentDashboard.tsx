@@ -27,6 +27,68 @@ export default function StudentDashboard() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [checkedInSession, setCheckedInSession] = useState<AttendanceSession | null>(null);
 
+
+  // Push Notifications state
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>('default');
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      setNotificationPermission(Notification.permission);
+    }
+  }, []);
+
+  const requestNotificationPermission = async () => {
+    if (typeof window === 'undefined' || !('Notification' in window)) {
+      toast.error('Browser does not support desktop notifications');
+      return;
+    }
+    try {
+      const permission = await Notification.requestPermission();
+      setNotificationPermission(permission);
+      if (permission === 'granted') {
+        toast.success('Push notifications enabled!');
+      } else {
+        toast.error('Push notification permission denied.');
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  // Monitor for newly opened sessions
+  const prevSessionsRef = React.useRef<AttendanceSession[]>([]);
+  useEffect(() => {
+    if (!currentUser || prevSessionsRef.current.length === 0) {
+      prevSessionsRef.current = sessions;
+      return;
+    }
+
+    const activeSessions = sessions.filter(s => s.status === 'active' && s.classGroup === currentUser.classGroup);
+    const newActiveSessions = activeSessions.filter(activeSess => {
+      const prevSess = prevSessionsRef.current.find(p => p.id === activeSess.id);
+      return !prevSess || prevSess.status !== 'active';
+    });
+
+    if (newActiveSessions.length > 0) {
+      newActiveSessions.forEach(sess => {
+        const msg = `Lecturer has opened check-in for ${sess.courseCode} (${sess.courseName})!`;
+        toast.info('New Attendance Session Opened', {
+          description: msg,
+          icon: <Bell className="text-blue-500 w-5 h-5" />,
+          duration: 10000,
+        });
+
+        if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+          new Notification('Course E-Attendance', {
+            body: msg,
+          });
+        }
+      });
+    }
+
+    prevSessionsRef.current = sessions;
+  }, [sessions, currentUser]);
+
   // Course Enrollment & QR Scanner States
   const [showScannerModal, setShowScannerModal] = useState(false);
   const [scannerMode, setScannerMode] = useState<'camera' | 'simulation' | 'manual'>('simulation');
@@ -439,7 +501,7 @@ export default function StudentDashboard() {
 
       setRecords([newRecord, ...records]);
       setSessions(updatedSessions);
-      setCheckedInSession(targetSession);
+      if (targetSession) setCheckedInSession(targetSession);
       setIsSubmitting(false);
 
       if (actualIsInside) {
@@ -595,13 +657,36 @@ export default function StudentDashboard() {
               {showNotifications && (
                 <div className="absolute right-0 mt-2.5 w-80 bg-white border border-slate-100 rounded-2xl shadow-xl z-50 p-4 max-h-[400px] overflow-y-auto animate-fade-in">
                   <div className="flex justify-between items-center border-b border-slate-100 pb-2 mb-3">
+                    
                     <span className="text-xs font-extrabold text-slate-700 uppercase">Notifikasi & Amaran ({myAlerts.length})</span>
                     {unreadAlerts.length > 0 && (
-                      <span className="text-[9px] bg-red-50 text-red-600 font-bold px-1.5 py-0.5 rounded-full">
-                        {unreadAlerts.length} Belum Dibaca
-                      </span>
+                      <button 
+                        className="text-[10px] text-blue-600 hover:text-blue-800 font-bold px-2 py-1 bg-blue-50 rounded"
+                        onClick={() => {
+                          const updated = alerts.map(a => 
+                            (a.studentId === currentUser?.id && a.status === 'sent') 
+                              ? { ...a, status: 'read' as const } : a
+                          );
+                          setAlerts(updated);
+                        }}
+                      >
+                        Mark All Read
+                      </button>
                     )}
                   </div>
+                  
+                  {notificationPermission !== 'granted' && (
+                    <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-3 mb-3">
+                      <p className="text-[11px] text-slate-600 mb-2">Enable desktop push notifications to get instantly alerted when a lecturer opens a class session.</p>
+                      <button 
+                        onClick={requestNotificationPermission}
+                        className="w-full text-[10px] bg-blue-600 text-white font-bold py-1.5 rounded-lg hover:bg-blue-700"
+                      >
+                        Enable Push Notifications
+                      </button>
+                    </div>
+                  )}
+
 
                   <div className="space-y-3">
                     {myAlerts.length === 0 ? (

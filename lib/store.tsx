@@ -337,6 +337,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     localStorage.removeItem('e_attendance_user');
   };
 
+  
+  // Sync state across tabs
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'e_attendance_sessions' && e.newValue) {
+        setSessions(JSON.parse(e.newValue));
+      } else if (e.key === 'e_attendance_records' && e.newValue) {
+        setRecords(JSON.parse(e.newValue));
+      } else if (e.key === 'e_attendance_alerts' && e.newValue) {
+        setAlerts(JSON.parse(e.newValue));
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
+
   // Automatically log users out after 15 minutes of inactivity/idleness
   useEffect(() => {
     if (!isLoggedIn) return;
