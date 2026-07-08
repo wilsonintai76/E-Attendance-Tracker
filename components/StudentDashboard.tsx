@@ -1,11 +1,12 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useAppStore, AttendanceRecord, AttendanceSession } from '@/lib/store';
+import { useAppStore, AttendanceRecord, AttendanceSession, Course } from '@/lib/store';
 import { 
   LogOut, ShieldCheck, CheckCircle2, Award, ClipboardCheck, 
   MapPin, HelpCircle, Save, ArrowRight, BookOpen, Clock,
-  Navigation, Compass, AlertTriangle, Info, Check, User
+  Navigation, Compass, AlertTriangle, Info, Check, User,
+  Activity, Wifi, Bell, QrCode, Camera, Globe, Users
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { toast } from 'sonner';
@@ -13,15 +14,130 @@ import { calculateDistance, getCurrentCoordinates } from '@/lib/geoUtils';
 import PolikuMap from './PolikuMap';
 
 export default function StudentDashboard() {
-  const { currentUser, setCurrentUser, sessions, setSessions, records, setRecords, logout } = useAppStore();
+  const { currentUser, setCurrentUser, sessions, setSessions, records, setRecords, logout, alerts = [], setAlerts, courses = [], setCourses } = useAppStore();
   
   // Active Tab for mobile bottom menu
-  const [activeTab, setActiveTab] = useState<'checkin' | 'history' | 'profile'>('checkin');
+  const [activeTab, setActiveTab] = useState<'checkin' | 'courses' | 'history' | 'profile'>('checkin');
+
+  // Notifications tray toggle
+  const [showNotifications, setShowNotifications] = useState(false);
 
   // Checking state
   const [selectedSessionId, setSelectedSessionId] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [checkedInSession, setCheckedInSession] = useState<AttendanceSession | null>(null);
+
+  // Course Enrollment & QR Scanner States
+  const [showScannerModal, setShowScannerModal] = useState(false);
+  const [scannerMode, setScannerMode] = useState<'camera' | 'simulation' | 'manual'>('simulation');
+  const [videoStream, setVideoStream] = useState<MediaStream | null>(null);
+  const [cameraPermission, setCameraPermission] = useState<'prompt' | 'granted' | 'denied' | 'unsupported'>('prompt');
+  const [manualCourseCode, setManualCourseCode] = useState('');
+  const [isScanning, setIsScanning] = useState(false);
+  const [scannedCourse, setScannedCourse] = useState<Course | null>(null);
+  const [scanningSuccess, setScanningSuccess] = useState(false);
+
+  const startCamera = async () => {
+    try {
+      setCameraPermission('prompt');
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      setVideoStream(stream);
+      setCameraPermission('granted');
+      setTimeout(() => {
+        const video = document.getElementById('qr-video') as HTMLVideoElement;
+        if (video) {
+          video.srcObject = stream;
+          video.play().catch(e => console.log('Video play error:', e));
+        }
+      }, 200);
+    } catch (err) {
+      console.error('Error accessing camera:', err);
+      setCameraPermission('denied');
+      setScannerMode('simulation');
+      toast.error('Gagal mengakses kamera peranti. Mod simulasi diaktifkan.');
+    }
+  };
+
+  const stopCamera = () => {
+    if (videoStream) {
+      videoStream.getTracks().forEach(track => track.stop());
+      setVideoStream(null);
+    }
+  };
+
+  useEffect(() => {
+    if (showScannerModal && scannerMode === 'camera') {
+      startCamera();
+    } else {
+      stopCamera();
+    }
+    return () => {
+      stopCamera();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showScannerModal, scannerMode]);
+
+  const handleEnrollInCourse = (courseId: string) => {
+    if (!currentUser) return;
+    
+    const enrolledCourseIds = currentUser.enrolledCourses || ['course-1'];
+    
+    if (enrolledCourseIds.includes(courseId)) {
+      toast.info('Anda sudah pun berdaftar untuk kursus ini!');
+      return;
+    }
+
+    const courseToEnroll = courses.find(c => c.id === courseId);
+    if (!courseToEnroll) {
+      toast.error('Kursus tidak dijumpai di dalam sistem.');
+      return;
+    }
+
+    const updatedUser = {
+      ...currentUser,
+      enrolledCourses: [...enrolledCourseIds, courseId]
+    };
+
+    setCurrentUser(updatedUser);
+    toast.success(`Berjaya mendaftar! Anda telah didaftarkan ke kursus ${courseToEnroll.code} - ${courseToEnroll.name}.`);
+  };
+
+  const handleManualEnroll = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!manualCourseCode.trim()) return;
+
+    const matchedCourse = courses.find(
+      c => c.code.toLowerCase() === manualCourseCode.trim().toLowerCase()
+    );
+
+    if (!matchedCourse) {
+      toast.error('Kod kursus tidak sah. Sila pastikan anda memasukkan kod yang betul (Contoh: DJJ31022).');
+      return;
+    }
+
+    handleEnrollInCourse(matchedCourse.id);
+    setManualCourseCode('');
+    setShowScannerModal(false);
+  };
+
+  const handleSimulatedScan = (course: Course) => {
+    setIsScanning(true);
+    setScannedCourse(course);
+    setScanningSuccess(false);
+
+    // Simulate standard laser scan and beep delay
+    setTimeout(() => {
+      setIsScanning(false);
+      setScanningSuccess(true);
+      
+      setTimeout(() => {
+        handleEnrollInCourse(course.id);
+        setShowScannerModal(false);
+        setScannedCourse(null);
+        setScanningSuccess(false);
+      }, 1200);
+    }, 1500);
+  };
 
   // Edit profile info (Matric & Class)
   const [isEditingProfile, setIsEditingProfile] = useState(!currentUser?.matricNo || !currentUser?.classGroup);
@@ -35,6 +151,147 @@ export default function StudentDashboard() {
   const [locationError, setLocationError] = useState<string | null>(null);
   const [bypassGeofence, setBypassGeofence] = useState(false);
   const [showOutOfZoneConfirm, setShowOutOfZoneConfirm] = useState(false);
+  const [gpsAccuracy, setGpsAccuracy] = useState<number | null>(null);
+  const [isWatchingLocation, setIsWatchingLocation] = useState(false);
+  const [watchId, setWatchId] = useState<number | null>(null);
+  const [lastLocationUpdate, setLastLocationUpdate] = useState<string | null>(null);
+  const [permissionState, setPermissionState] = useState<PermissionState | 'unsupported' | 'checking' | null>('checking');
+
+  // Course Enrollment calculations
+  const enrolledCourseIds = currentUser?.enrolledCourses || ['course-1'];
+  const enrolledCourses = courses.filter(c => enrolledCourseIds.includes(c.id));
+  const enrolledCourseCodes = enrolledCourses.map(c => c.code.toUpperCase());
+
+  // Find active live sessions and geofence state variables (filtered to enrolled courses)
+  const activeSessions = sessions.filter(
+    s => s.status === 'active' && enrolledCourseCodes.includes((s.courseCode || '').toUpperCase())
+  );
+  const targetSession = sessions.find(s => s.id === selectedSessionId);
+  const isGeofenced = !!(targetSession?.latitude && targetSession?.longitude);
+  
+  const computedDistance = (studentLat !== null && studentLng !== null && targetSession?.latitude && targetSession?.longitude)
+    ? calculateDistance(studentLat, studentLng, targetSession.latitude, targetSession.longitude)
+    : null;
+    
+  const isInsideGeofence = (computedDistance !== null && targetSession?.radius)
+    ? computedDistance <= targetSession.radius
+    : true;
+
+  // Monitor browser geolocation permissions
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    if (!navigator.geolocation) {
+      setPermissionState('unsupported');
+      return;
+    }
+
+    if (!navigator.permissions || !navigator.permissions.query) {
+      setPermissionState('prompt');
+      return;
+    }
+
+    let permissionStatus: PermissionStatus | null = null;
+
+    const updatePermission = () => {
+      if (permissionStatus) {
+        setPermissionState(permissionStatus.state);
+      }
+    };
+
+    navigator.permissions.query({ name: 'geolocation' as PermissionName })
+      .then((status) => {
+        permissionStatus = status;
+        setPermissionState(status.state);
+        status.addEventListener('change', updatePermission);
+      })
+      .catch((err) => {
+        console.error('Error querying geolocation permission:', err);
+        setPermissionState('prompt');
+      });
+
+    return () => {
+      if (permissionStatus) {
+        permissionStatus.removeEventListener('change', updatePermission);
+      }
+    };
+  }, []);
+
+  const getStudentLocation = React.useCallback(async () => {
+    setIsFetchingLocation(true);
+    setLocationError(null);
+    try {
+      const pos = await getCurrentCoordinates();
+      setStudentLat(pos.coords.latitude);
+      setStudentLng(pos.coords.longitude);
+      setGpsAccuracy(pos.coords.accuracy);
+      setLastLocationUpdate(new Date().toLocaleTimeString());
+      setPermissionState('granted');
+      toast.success('Sistem berjaya mengesan koordinat GPS terkini anda!');
+    } catch (err: any) {
+      console.error(err);
+      if (err.code === 1) {
+        setPermissionState('denied');
+      }
+      setLocationError(err.message || 'Gagal mengakses GPS. Sila pastikan kebenaran lokasi dibenarkan.');
+      toast.error('Gagal mendapatkan koordinat GPS. Sila benarkan akses lokasi pada peranti anda.');
+    } finally {
+      setIsFetchingLocation(false);
+    }
+  }, []);
+
+  // Automatically manage live background GPS tracking when a class session is active and geofenced
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    let activeWatchId: number | null = null;
+
+    if (selectedSessionId) {
+      setBypassGeofence(false);
+      
+      // Fetch initial single shot location immediately
+      getStudentLocation().catch(() => {});
+
+      // If geofencing is required, automatically start high-accuracy live background tracking
+      if (isGeofenced && navigator.geolocation) {
+        setIsWatchingLocation(true);
+        activeWatchId = navigator.geolocation.watchPosition(
+          (position) => {
+            setStudentLat(position.coords.latitude);
+            setStudentLng(position.coords.longitude);
+            setGpsAccuracy(position.coords.accuracy);
+            setLastLocationUpdate(new Date().toLocaleTimeString());
+            setLocationError(null);
+            setPermissionState('granted');
+          },
+          (err) => {
+            console.error('Background automatic GPS watch failed:', err);
+            setLocationError(err.message || 'Ralat mendapatkan lokasi automatik.');
+            setIsWatchingLocation(false);
+            if (err.code === 1) {
+              setPermissionState('denied');
+            }
+          },
+          { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+        );
+        setWatchId(activeWatchId);
+      }
+    } else {
+      // Reset GPS states when no class is selected
+      setStudentLat(null);
+      setStudentLng(null);
+      setGpsAccuracy(null);
+      setLastLocationUpdate(null);
+      setIsWatchingLocation(false);
+      setWatchId(null);
+    }
+
+    return () => {
+      if (activeWatchId !== null && navigator.geolocation) {
+        navigator.geolocation.clearWatch(activeWatchId);
+      }
+    };
+  }, [selectedSessionId, isGeofenced, getStudentLocation]);
 
   // Appeal & Evidence States
   const [selectedRecordForAppeal, setSelectedRecordForAppeal] = useState<AttendanceRecord | null>(null);
@@ -43,51 +300,6 @@ export default function StudentDashboard() {
   const [evidenceFileName, setEvidenceFileName] = useState('');
   const [evidenceFile, setEvidenceFile] = useState<string>('');
   const [isSubmittingAppeal, setIsSubmittingAppeal] = useState(false);
-
-  const getStudentLocation = async () => {
-    setIsFetchingLocation(true);
-    setLocationError(null);
-    try {
-      const pos = await getCurrentCoordinates();
-      setStudentLat(pos.coords.latitude);
-      setStudentLng(pos.coords.longitude);
-      toast.success('Successfully retrieved your current GPS location!');
-    } catch (err: any) {
-      console.error(err);
-      setLocationError(err.message || 'Could not access GPS. Please ensure location permissions are enabled.');
-      toast.error('Could not get GPS coordinates. Sandbox environments might restrict access, use "Mock Location" to test!');
-    } finally {
-      setIsFetchingLocation(false);
-    }
-  };
-
-  const mockStudentLocation = (isInside: boolean) => {
-    if (isInside) {
-      // 1.60333, 110.35471 is very close to POLIKU JKM coordinates (1.6033, 110.3547)
-      setStudentLat(1.60333);
-      setStudentLng(110.35471);
-      setLocationError(null);
-      toast.success('Mock location set: INSIDE classroom geofence (POLIKU JKM)!');
-    } else {
-      // 1.6050, 110.3520 is about 350 meters away (Student Housing)
-      setStudentLat(1.6050);
-      setStudentLng(110.3520);
-      setLocationError(null);
-      toast.warning('Mock location set: OUTSIDE classroom geofence (Student Housing)!');
-    }
-  };
-
-  // Reset GPS states when selected session changes
-  useEffect(() => {
-    if (selectedSessionId) {
-      setBypassGeofence(false);
-      // Attempt auto-location capture
-      getStudentLocation().catch(() => {});
-    } else {
-      setStudentLat(null);
-      setStudentLng(null);
-    }
-  }, [selectedSessionId]);
 
   // Auto-switch to profile tab on mobile if registration is incomplete
   useEffect(() => {
@@ -114,20 +326,6 @@ export default function StudentDashboard() {
       toast.success('Student profile updated successfully!');
     }
   };
-
-  // Find active live sessions
-  const activeSessions = sessions.filter(s => s.status === 'active');
-
-  const targetSession = sessions.find(s => s.id === selectedSessionId);
-  const isGeofenced = !!(targetSession?.latitude && targetSession?.longitude);
-  
-  const computedDistance = (studentLat !== null && studentLng !== null && targetSession?.latitude && targetSession?.longitude)
-    ? calculateDistance(studentLat, studentLng, targetSession.latitude, targetSession.longitude)
-    : null;
-    
-  const isInsideGeofence = (computedDistance !== null && targetSession?.radius)
-    ? computedDistance <= targetSession.radius
-    : true;
 
   // Handle check-in submit
   const handleCheckIn = async (e: React.FormEvent) => {
@@ -174,7 +372,7 @@ export default function StudentDashboard() {
         toast.dismiss('gps-check');
         setIsSubmitting(false);
         console.error(err);
-        toast.error('GPS Location check failed. This class requires GPS location verification. Please enable GPS/location services on your device and try again, or use the "Mock Location" tools.');
+        toast.error('Sistem gagal menyemak lokasi GPS anda. Kelas ini memerlukan pengesahan lokasi GPS. Sila pastikan kebenaran lokasi pada peranti dibenarkan.');
         return;
       }
     }
@@ -188,8 +386,8 @@ export default function StudentDashboard() {
       ? finalDistance <= targetSession.radius
       : true;
 
-    // Show warning confirmation if student is out-of-zone
-    if (isGeofenced && !finalIsInside) {
+    // Show warning confirmation if student is out-of-zone and it's NOT an online session
+    if (isGeofenced && !finalIsInside && targetSession?.deliveryMode !== 'online') {
       setShowOutOfZoneConfirm(true);
       return;
     }
@@ -209,7 +407,10 @@ export default function StudentDashboard() {
 
     // Simulate database write
     setTimeout(() => {
-      const actualIsInside = isGeofenced ? finalIsInside : true;
+      // Determine if check-in is valid. 
+      // If deliveryMode is 'online', we always treat as 'present' regardless of geofence.
+      const isOnline = targetSession?.deliveryMode === 'online';
+      const actualIsInside = isOnline ? true : (isGeofenced ? finalIsInside : true);
 
       // 1. Create check-in record
       const newRecord: AttendanceRecord = {
@@ -220,12 +421,12 @@ export default function StudentDashboard() {
         matricNo: currentUser?.matricNo || matricNo.toUpperCase(),
         classGroup: currentUser?.classGroup || classGroup.toUpperCase(),
         timestamp: new Date().toISOString(),
-        status: actualIsInside ? 'present' : 'bermasalah', // Flagged if outside geofence boundary
+        status: actualIsInside ? 'present' : 'bermasalah', // Flagged if outside geofence boundary and not online
         latitude: finalLat || undefined,
         longitude: finalLng || undefined,
         distanceToCenter: finalDistance || undefined,
-        inGeofence: actualIsInside,
-        approvalStatus: actualIsInside ? 'none' : 'none' // Outstanding submission required
+        inGeofence: isOnline ? true : finalIsInside,
+        approvalStatus: 'none'
       };
 
       // 2. Increment check-in count on session
@@ -329,18 +530,34 @@ export default function StudentDashboard() {
   // Student specific check-in records
   const myRecords = records.filter(rec => rec.studentId === currentUser?.id);
 
+  // Student notifications & alerts
+  const myAlerts = alerts.filter(a => a.studentId === currentUser?.id);
+  const unreadAlerts = myAlerts.filter(a => a.status === 'sent');
+
+  const handleAcknowledgeAlert = (alertId: string) => {
+    const updated = alerts.map(a => {
+      if (a.id === alertId) {
+        return { ...a, status: 'read' as const };
+      }
+      return a;
+    });
+    setAlerts(updated);
+    toast.success('Amaran diakui & ditandakan sebagai dibaca!');
+  };
+
   // Find completed or active sessions of student's class group that they haven't checked in for yet
   const studentClassGroup = (currentUser?.classGroup || '').toUpperCase();
   const missedSessions = sessions.filter(sess => {
     const isForStudentClass = sess.classGroup.toUpperCase() === studentClassGroup;
+    const isEnrolled = enrolledCourseCodes.includes(sess.courseCode.toUpperCase());
     const hasRecord = records.some(r => r.sessionId === sess.id && r.studentId === currentUser?.id);
-    return isForStudentClass && !hasRecord && (sess.status === 'completed' || sess.status === 'active');
+    return isForStudentClass && isEnrolled && !hasRecord && (sess.status === 'completed' || sess.status === 'active');
   });
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
       {/* Header banner */}
-      <header className="bg-white border-b border-slate-100 sticky top-0 z-10 shadow-xs">
+      <header className="bg-white border-b border-slate-100 sticky top-0 z-20 shadow-xs">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white font-bold shadow-md shadow-blue-100">
@@ -352,11 +569,90 @@ export default function StudentDashboard() {
             </div>
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-4 relative">
             <div className="text-right hidden sm:block">
               <p className="text-sm font-semibold text-slate-800">{currentUser?.name}</p>
               <p className="text-xs text-slate-400 font-mono text-right">{currentUser?.matricNo || 'No Matric'}</p>
             </div>
+            
+            {/* Notification Bell Button */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShowNotifications(!showNotifications)}
+                className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all cursor-pointer relative"
+                title="Sistem Amaran & Notifikasi"
+              >
+                <Bell className="w-5 h-5" />
+                {unreadAlerts.length > 0 && (
+                  <span className="absolute top-1 right-1 w-4 h-4 bg-red-500 text-white rounded-full text-[9px] font-black flex items-center justify-center animate-bounce">
+                    {unreadAlerts.length}
+                  </span>
+                )}
+              </button>
+
+              {/* Notification Tray Dropdown */}
+              {showNotifications && (
+                <div className="absolute right-0 mt-2.5 w-80 bg-white border border-slate-100 rounded-2xl shadow-xl z-50 p-4 max-h-[400px] overflow-y-auto animate-fade-in">
+                  <div className="flex justify-between items-center border-b border-slate-100 pb-2 mb-3">
+                    <span className="text-xs font-extrabold text-slate-700 uppercase">Notifikasi & Amaran ({myAlerts.length})</span>
+                    {unreadAlerts.length > 0 && (
+                      <span className="text-[9px] bg-red-50 text-red-600 font-bold px-1.5 py-0.5 rounded-full">
+                        {unreadAlerts.length} Belum Dibaca
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="space-y-3">
+                    {myAlerts.length === 0 ? (
+                      <div className="text-center py-8 text-xs text-slate-400 italic">
+                        Tiada sebarang amaran atau notifikasi buat masa ini. Rekod anda cemerlang!
+                      </div>
+                    ) : (
+                      [...myAlerts].sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()).map((alert) => (
+                        <div 
+                          key={alert.id} 
+                          className={`p-3 rounded-xl border transition-all text-xs ${
+                            alert.status === 'sent' 
+                              ? 'bg-amber-50/50 border-amber-100 shadow-2xs' 
+                              : 'bg-slate-50/30 border-slate-100'
+                          }`}
+                        >
+                          <div className="flex justify-between items-start mb-1.5">
+                            <span className="font-extrabold text-amber-700 text-[10px] uppercase flex items-center gap-1">
+                              <AlertTriangle className="w-3.5 h-3.5" /> Amaran Kehadiran
+                            </span>
+                            <span className="text-[9px] text-slate-400 font-semibold">
+                              {new Date(alert.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                            </span>
+                          </div>
+
+                          <p className="text-[11px] text-slate-700 leading-relaxed font-medium mb-2.5">
+                            {alert.message}
+                          </p>
+
+                          {alert.status === 'sent' ? (
+                            <button
+                              type="button"
+                              onClick={() => handleAcknowledgeAlert(alert.id)}
+                              className="w-full bg-amber-600 hover:bg-amber-700 text-white font-extrabold text-[10px] py-1.5 rounded-lg shadow-sm cursor-pointer transition-all text-center"
+                            >
+                              Faham & Acknowledge
+                            </button>
+                          ) : (
+                            <span className="text-[10px] text-green-600 font-bold flex items-center gap-1">
+                              ✓ Telah Dibaca & Diakui
+                            </span>
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img 
               src={currentUser?.avatar || 'https://i.pravatar.cc/150?u=user'} 
               alt="Avatar" 
@@ -376,11 +672,91 @@ export default function StudentDashboard() {
 
       {/* Main Content Dashboard */}
       <main className="flex-1 max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
+        {unreadAlerts.length > 0 && (
+          <div className="mb-6 bg-amber-50 border border-amber-250/60 rounded-3xl p-5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 animate-fade-in shadow-2xs">
+            <div className="flex items-start gap-3">
+              <div className="bg-amber-100 p-2.5 rounded-2xl text-amber-700 mt-0.5 md:mt-0">
+                <AlertTriangle className="w-5 h-5 animate-bounce" />
+              </div>
+              <div>
+                <h4 className="font-extrabold text-slate-800 text-sm">Amaran Akademik Aktif (Critical Attendance Alert)</h4>
+                <p className="text-xs text-slate-600 mt-0.5 font-semibold">Anda mempunyai {unreadAlerts.length} amaran rasmi daripada pensyarah kerana peratusan kehadiran kuliah di bawah {unreadAlerts[0]?.threshold || 80}%.</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowNotifications(true)}
+              className="bg-amber-600 hover:bg-amber-700 text-white font-extrabold text-xs py-2 px-4 rounded-xl shadow-sm transition-all cursor-pointer shrink-0"
+            >
+              Lihat Amaran & Akui
+            </button>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 md:grid-cols-5 gap-8">
           
-          {/* Profile Setup / Details Column */}
-          <div className={`md:col-span-2 space-y-6 ${activeTab === 'profile' ? 'block' : 'hidden'} md:block`}>
-            <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-sm">
+          {/* Column 1: Navigation Menu and Courses/Profile */}
+          <div className={`${activeTab === 'profile' || activeTab === 'courses' ? 'md:col-span-5 max-w-2xl mx-auto' : 'md:col-span-2'} space-y-6 w-full`}>
+            
+            {/* Desktop Navigation Sidebar (hidden on mobile) */}
+            <div className="hidden md:block bg-white border border-slate-100 rounded-3xl p-5 shadow-xs space-y-2">
+              <h3 className="font-extrabold text-slate-800 text-[10px] uppercase tracking-wider mb-3 px-3 flex items-center gap-1.5">
+                <ShieldCheck className="w-4 h-4 text-blue-600" /> Menu Pelajar
+              </h3>
+              <div className="grid grid-cols-4 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('checkin')}
+                  className={`flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl text-[11px] font-black transition-all cursor-pointer ${
+                    activeTab === 'checkin'
+                      ? 'bg-blue-600 text-white shadow-md shadow-blue-100'
+                      : 'text-slate-500 hover:text-blue-600 hover:bg-slate-50'
+                  }`}
+                >
+                  <ClipboardCheck className="w-4 h-4" /> Check-In
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('courses')}
+                  className={`flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl text-[11px] font-black transition-all cursor-pointer ${
+                    activeTab === 'courses'
+                      ? 'bg-blue-600 text-white shadow-md shadow-blue-100'
+                      : 'text-slate-500 hover:text-blue-600 hover:bg-slate-50'
+                  }`}
+                >
+                  <BookOpen className="w-4 h-4" /> Kursus Saya
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('history')}
+                  className={`flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl text-[11px] font-black transition-all cursor-pointer ${
+                    activeTab === 'history'
+                      ? 'bg-blue-600 text-white shadow-md shadow-blue-100'
+                      : 'text-slate-500 hover:text-blue-600 hover:bg-slate-50'
+                  }`}
+                >
+                  <Clock className="w-4 h-4" /> Kehadiran
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('profile')}
+                  className={`flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl text-[11px] font-black transition-all cursor-pointer ${
+                    activeTab === 'profile'
+                      ? 'bg-blue-600 text-white shadow-md shadow-blue-100'
+                      : 'text-slate-500 hover:text-blue-600 hover:bg-slate-50'
+                  }`}
+                >
+                  <User className="w-4 h-4" /> Profil
+                </button>
+              </div>
+            </div>
+
+            {/* Student Profile block wrapper */}
+            <div className={activeTab === 'profile' ? 'block animate-fade-in' : 'hidden'}>
+              <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-sm">
               <h3 className="font-bold text-slate-800 text-base mb-4 flex items-center gap-2">
                 <Award className="w-5 h-5 text-blue-600" /> Student Profile
               </h3>
@@ -452,12 +828,104 @@ export default function StudentDashboard() {
                 </div>
               )}
             </div>
+            </div>
+
+            {/* Kursus Berdaftar Saya (My Enrolled Courses) Card */}
+            <div className={activeTab === 'courses' ? 'block animate-fade-in' : 'hidden'}>
+              <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-sm space-y-4">
+              <div className="flex justify-between items-center border-b border-slate-50 pb-3">
+                <h3 className="font-bold text-slate-800 text-sm flex items-center gap-1.5">
+                  <BookOpen className="w-4.5 h-4.5 text-blue-600" /> Kursus Saya (Enrolled)
+                </h3>
+                <span className="text-[10px] bg-blue-50 text-blue-600 font-black px-2.5 py-0.5 rounded-full">
+                  {enrolledCourses.length} Kursus
+                </span>
+              </div>
+
+              {enrolledCourses.length === 0 ? (
+                <div className="text-center py-6 text-slate-400 text-xs italic">
+                  Tiada kursus berdaftar. Sila imbas kod QR pensyarah untuk mendaftar masuk.
+                </div>
+              ) : (
+                <div className="space-y-3.5 max-h-[300px] overflow-y-auto pr-1">
+                  {enrolledCourses.map((course) => {
+                    const courseSessions = sessions.filter(
+                      s => s.courseCode.toUpperCase() === course.code.toUpperCase()
+                    );
+                    const courseRecords = records.filter(
+                      r => r.studentId === currentUser?.id && courseSessions.some(s => s.id === r.sessionId)
+                    );
+                    const totalSessions = courseSessions.filter(
+                      s => s.status === 'completed' || s.status === 'active'
+                    ).length;
+                    const presentCount = courseRecords.filter(
+                      r => r.status === 'present' || r.status === 'late' || r.approvalStatus === 'approved'
+                    ).length;
+                    const attendancePercent = totalSessions > 0 ? Math.round((presentCount / totalSessions) * 100) : 100;
+                    
+                    const isBelowThreshold = attendancePercent < 80;
+
+                    return (
+                      <div key={course.id} className="border border-slate-50 hover:border-slate-100 rounded-2xl p-3 bg-slate-50/20 hover:bg-slate-50/50 transition-all">
+                        <div className="flex justify-between items-start mb-2">
+                          <div className="min-w-0 flex-1">
+                            <span className="text-[9px] font-black bg-blue-50 text-blue-600 px-2 py-0.5 rounded-md uppercase tracking-wide">
+                              {course.code}
+                            </span>
+                            <h4 className="font-bold text-slate-800 text-[11px] mt-1 leading-snug truncate" title={course.name}>
+                              {course.name}
+                            </h4>
+                            <p className="text-[9px] text-slate-400 mt-0.5 flex items-center gap-0.5 truncate">
+                              <MapPin className="w-2.5 h-2.5" /> {course.location}
+                            </p>
+                          </div>
+                          <div className="text-right shrink-0 pl-2">
+                            <span className={`text-[11px] font-black px-1.5 py-0.5 rounded-md ${isBelowThreshold ? 'text-amber-700 bg-amber-50' : 'text-green-700 bg-green-50'}`}>
+                              {attendancePercent}%
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Attendance Progress bar */}
+                        <div className="space-y-1">
+                          <div className="w-full bg-slate-100 rounded-full h-1 overflow-hidden">
+                            <div 
+                              className={`h-full rounded-full transition-all duration-500 ${isBelowThreshold ? 'bg-amber-500' : 'bg-green-500'}`}
+                              style={{ width: `${Math.min(100, attendancePercent)}%` }}
+                            />
+                          </div>
+                          <div className="flex justify-between items-center text-[9px] text-slate-400 font-bold">
+                            <span>Status: {isBelowThreshold ? '⚠️ Amaran' : '✓ Selamat'}</span>
+                            <span className="text-slate-500">{presentCount}/{totalSessions} Kuliah</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              <div className="pt-3 border-t border-slate-50">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setScannerMode('simulation');
+                    setShowScannerModal(true);
+                  }}
+                  className="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-extrabold py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-md shadow-blue-100 transition-all cursor-pointer hover:shadow-lg hover:scale-101"
+                >
+                  <QrCode className="w-4 h-4 animate-pulse" />
+                  Daftar Kursus (Imbas QR)
+                </button>
+              </div>
+            </div>
+            </div>
           </div>
 
-          {/* Core Check-in Card Column */}
-          <div className="md:col-span-3 space-y-6">
+          {/* Column 2: Check-in / History Content Panels */}
+          <div className={`${activeTab === 'checkin' || activeTab === 'history' ? 'md:col-span-3' : 'hidden'} space-y-6`}>
             
-            <div className={`${activeTab === 'checkin' ? 'block' : 'hidden'} md:block space-y-6`}>
+            <div className={activeTab === 'checkin' ? 'block space-y-6 animate-fade-in' : 'hidden'}>
               {/* Success check-in splash */}
               {checkedInSession ? (
               <motion.div 
@@ -474,6 +942,14 @@ export default function StudentDashboard() {
                 <div className="bg-white border border-green-100/60 rounded-2xl p-4 w-full text-left space-y-1 text-slate-600 text-xs mb-4">
                   <p><span className="font-semibold text-slate-700">Course:</span> {checkedInSession.courseName}</p>
                   <p><span className="font-semibold text-slate-700">Class:</span> {checkedInSession.classGroup}</p>
+                  <p>
+                    <span className="font-semibold text-slate-700">Mode:</span> 
+                    {checkedInSession.deliveryMode === 'online' ? (
+                      <span className="ml-1 text-purple-600 font-bold">Online</span>
+                    ) : (
+                      <span className="ml-1 text-blue-600 font-bold">Bersemuka (F2F)</span>
+                    )}
+                  </p>
                   <p><span className="font-semibold text-slate-700">Time:</span> {new Date().toLocaleTimeString()}</p>
                 </div>
 
@@ -506,32 +982,106 @@ export default function StudentDashboard() {
                 ) : (
                   <form onSubmit={handleCheckIn} className="space-y-5">
                     <div>
-                      <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Select Live Class *</label>
-                      <select
-                        required
-                        value={selectedSessionId}
-                        onChange={(e) => setSelectedSessionId(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-4 text-sm text-slate-700 focus:bg-white focus:ring-2 focus:ring-blue-100 focus:border-blue-500 outline-none transition-all cursor-pointer"
-                      >
-                        <option value="">-- Choose Live Class --</option>
-                        {activeSessions.map((s) => (
-                          <option key={s.id} value={s.id}>
-                            {s.courseCode} ({s.classGroup}) - {s.courseName} {s.week ? `[Week ${s.week}]` : ''} - {s.date} ({s.hours || 2} Hrs)
-                          </option>
-                        ))}
-                      </select>
+                      <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2.5">Pilih Sesi Kelas Live (Select Active Course Card) *</label>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {activeSessions.map((s) => {
+                          const isSelected = selectedSessionId === s.id;
+                          return (
+                            <button
+                              key={s.id}
+                              type="button"
+                              onClick={() => setSelectedSessionId(s.id)}
+                              className={`relative text-left p-5 rounded-3xl border-2 transition-all duration-300 cursor-pointer flex flex-col justify-between h-full group ${
+                                isSelected
+                                  ? 'border-blue-600 bg-blue-50/5 ring-4 ring-blue-100 shadow-md scale-102'
+                                  : 'border-slate-100 hover:border-blue-300 bg-slate-50/30 hover:bg-white hover:shadow-sm'
+                              }`}
+                            >
+                              {/* Top Row: Course Code & Active Badge */}
+                              <div className="w-full flex items-center justify-between gap-1 mb-2.5">
+                                <span className={`text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider ${
+                                  isSelected ? 'bg-blue-600 text-white' : 'bg-slate-200/80 text-slate-700'
+                                }`}>
+                                  {s.courseCode}
+                                </span>
+                                <span className="flex items-center gap-1.5 bg-green-50 px-2 py-0.5 rounded-full border border-green-100">
+                                  <span className="relative flex h-1.5 w-1.5">
+                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-500"></span>
+                                  </span>
+                                  <span className="text-[9px] font-black text-green-700 uppercase">Sesi Aktif</span>
+                                </span>
+                              </div>
+
+                              {/* Course Name */}
+                              <div className="mb-4">
+                                <h4 className={`font-extrabold text-xs sm:text-sm leading-snug ${isSelected ? 'text-blue-950' : 'text-slate-800'}`}>
+                                  {s.courseName}
+                                </h4>
+                                <div className="flex flex-wrap gap-1.5 mt-2">
+                                  <span className="text-[9px] font-bold bg-slate-100 text-slate-500 px-2 py-0.5 rounded border border-slate-200/40">
+                                    Kumpulan: {s.classGroup}
+                                  </span>
+                                  {s.week && (
+                                    <span className="text-[9px] font-bold bg-blue-50 text-blue-600 px-2 py-0.5 rounded border border-blue-100/40">
+                                      Minggu {s.week}
+                                    </span>
+                                  )}
+                                  {s.deliveryMode === 'online' ? (
+                                    <span className="text-[9px] font-black bg-purple-50 text-purple-600 px-2 py-0.5 rounded border border-purple-100/40 flex items-center gap-1">
+                                      <Globe className="w-2.5 h-2.5" /> ONLINE
+                                    </span>
+                                  ) : (
+                                    <span className="text-[9px] font-black bg-amber-50 text-amber-600 px-2 py-0.5 rounded border border-amber-100/40 flex items-center gap-1">
+                                      <Users className="w-2.5 h-2.5" /> BERSEMUKA
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Details Row: Location, Duration */}
+                              <div className="pt-3 border-t border-slate-100/60 flex items-center justify-between text-[10px] text-slate-500 w-full font-semibold">
+                                <span className="flex items-center gap-1 truncate max-w-[140px] text-slate-400">
+                                  <MapPin className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                                  <span className="truncate">{s.latitude && s.longitude ? '📍 Geofenced' : 'Standard Class'}</span>
+                                </span>
+                                <span className="flex items-center gap-0.5 text-slate-400 shrink-0">
+                                  <Clock className="w-3.5 h-3.5 text-slate-400" />
+                                  {s.hours || 2} Jam
+                                </span>
+                              </div>
+
+                              {/* Active outline check badge */}
+                              {isSelected && (
+                                <div className="absolute top-0 right-0 transform translate-x-1/4 -translate-y-1/4 w-7 h-7 bg-blue-600 text-white rounded-full border-3 border-white flex items-center justify-center shadow-lg shadow-blue-200">
+                                  <CheckCircle2 className="w-4 h-4 stroke-[2.5]" />
+                                </div>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
 
                     {selectedSessionId && targetSession && (
-                      <div className="bg-blue-50/40 border border-blue-100 rounded-2xl p-3 flex justify-between items-center text-xs text-slate-600">
+                      <div className="bg-blue-50/40 border border-blue-100 rounded-2xl p-3 flex flex-wrap justify-between items-center text-xs text-slate-600 gap-y-2">
                         <div>
                           <span className="font-bold text-slate-700">Date:</span> {targetSession.date}
                         </div>
-                        <div className="h-4 w-px bg-slate-200" />
+                        <div className="hidden sm:block h-4 w-px bg-slate-200" />
                         <div>
                           <span className="font-bold text-slate-700">Week:</span> {targetSession.week || '1'}
                         </div>
-                        <div className="h-4 w-px bg-slate-200" />
+                        <div className="hidden sm:block h-4 w-px bg-slate-200" />
+                        <div>
+                          <span className="font-bold text-slate-700">Mode:</span> 
+                          {targetSession.deliveryMode === 'online' ? (
+                            <span className="ml-1 text-purple-700 font-black">ONLINE</span>
+                          ) : (
+                            <span className="ml-1 text-amber-700 font-black">F2F</span>
+                          )}
+                        </div>
+                        <div className="hidden sm:block h-4 w-px bg-slate-200" />
                         <div>
                           <span className="font-bold text-slate-700">Duration:</span> {targetSession.hours || 2} Hour{targetSession.hours && targetSession.hours > 1 ? 's' : ''}
                         </div>
@@ -543,25 +1093,39 @@ export default function StudentDashboard() {
                         <div className="flex items-center justify-between flex-wrap gap-2">
                           <div className="flex items-center gap-1.5 text-slate-700 font-bold text-xs">
                             <MapPin className="w-4 h-4 text-blue-600 animate-pulse" />
-                            <span>GPS Geofence Verification</span>
+                            <span>Verifikasi Lokasi GPS (Geolocation API)</span>
                           </div>
 
                           {studentLat !== null && (
                             <span className={`px-2 py-0.5 rounded-full text-[9px] font-extrabold flex items-center gap-1 border ${
                               isInsideGeofence
-                                ? 'bg-green-100 text-green-700 border-green-200/80'
+                                ? 'bg-green-100 text-green-700 border-green-200/80 animate-fade-in'
                                 : 'bg-rose-100 text-rose-700 border-rose-200/80 animate-pulse'
                             }`}>
                               <span className={`w-1.5 h-1.5 rounded-full ${isInsideGeofence ? 'bg-green-500' : 'bg-rose-500'}`} />
-                              {isInsideGeofence ? 'WITHIN RANGE' : 'OUT OF ZONE'}
+                              {isInsideGeofence ? 'DALAM KAWASAN' : 'LUAR SEMPADAN'}
                             </span>
                           )}
 
-                          <span className="text-[10px] text-slate-400 font-medium ml-auto">Class limit: {targetSession?.radius || 50}m</span>
+                          <span className="text-[10px] text-slate-400 font-medium ml-auto">Had kelas: {targetSession?.radius || 50}m</span>
                         </div>
 
                         {isGeofenced ? (
                           <div className="space-y-3">
+                            {/* Live Tracking Status Badge if active */}
+                            {isWatchingLocation && (
+                              <div className="bg-emerald-50 border border-emerald-200/50 rounded-xl p-2.5 flex items-center justify-between text-[11px] text-emerald-800 font-bold animate-pulse">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="relative flex h-2 w-2">
+                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                                  </span>
+                                  <span>Penjejakan GPS Automatik Sedang Aktif...</span>
+                                </div>
+                                <span className="text-[9px] font-mono bg-emerald-100/80 px-2 py-0.5 rounded text-emerald-700">Real-Time GPS Watch</span>
+                              </div>
+                            )}
+
                             {/* Radar indicator */}
                             <div className="flex items-center gap-3 bg-white p-3 border border-slate-100 rounded-xl">
                               <div className="relative w-12 h-12 flex items-center justify-center">
@@ -580,7 +1144,7 @@ export default function StudentDashboard() {
                                       : 'bg-amber-500 shadow-amber-100'
                                     : 'bg-blue-500 shadow-blue-100'
                                 }`}>
-                                  <Compass className={`w-5 h-5 ${isFetchingLocation ? 'animate-spin' : ''}`} />
+                                  <Compass className={`w-5 h-5 ${(isFetchingLocation || isWatchingLocation) ? 'animate-spin' : ''}`} />
                                 </div>
                               </div>
 
@@ -590,36 +1154,125 @@ export default function StudentDashboard() {
                                     <p className={`text-xs font-bold ${
                                       isInsideGeofence ? 'text-green-600' : 'text-amber-600'
                                     }`}>
-                                      {isInsideGeofence ? 'Inside Classroom Boundary' : 'Outside Classroom Boundary'}
+                                      {isInsideGeofence ? 'Dalam Sempadan Kelas (Verified)' : 'Di Luar Sempadan Kelas'}
                                     </p>
                                     <p className="text-[10px] text-slate-400 font-medium">
-                                      Your distance: <span className="font-bold text-slate-700">{computedDistance}m</span> away
+                                      Jarak anda: <span className="font-bold text-slate-700">{computedDistance}m</span> dari pusat geofence
                                     </p>
                                   </div>
                                 ) : (
                                   <div>
-                                    <p className="text-xs font-bold text-slate-600">Awaiting GPS Location</p>
-                                    <p className="text-[10px] text-slate-400 font-medium">Click retrieve or use mock location</p>
+                                    <p className="text-xs font-bold text-slate-600">Menunggu Isyarat GPS</p>
+                                    <p className="text-[10px] text-slate-400 font-medium">Sistem sedang menjejaki lokasi GPS anda secara automatik.</p>
                                   </div>
                                 )}
                               </div>
                             </div>
 
-                            {/* Location stats */}
-                            {studentLat !== null && (
-                              <div className="grid grid-cols-2 gap-2 text-[10px] font-mono text-slate-400 bg-white p-2.5 rounded-xl border border-slate-100">
-                                <div>
-                                  <p className="font-semibold text-slate-400">YOUR COORDS:</p>
-                                  <p className="text-slate-600 mt-0.5">{studentLat.toFixed(5)}, {studentLng?.toFixed(5)}</p>
+                             {/* Verification Checklist */}
+                            <div className="bg-white p-3.5 border border-slate-100 rounded-xl space-y-2">
+                              <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-2">Checklist Geolocation API & Permissions</p>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
+                                <div className="flex items-center gap-1.5 text-slate-600">
+                                  <span className="w-4 h-4 bg-green-50 rounded-full flex items-center justify-center text-green-600 text-[10px] font-bold">✓</span>
+                                  <span>Sokongan Browser API</span>
                                 </div>
-                                <div>
-                                  <p className="font-semibold text-slate-400">CLASS COORDS:</p>
-                                  <p className="text-slate-600 mt-0.5">{targetSession?.latitude?.toFixed(5)}, {targetSession?.longitude?.toFixed(5)}</p>
+
+                                <div className="flex items-center gap-1.5 text-slate-600">
+                                  {permissionState === 'granted' ? (
+                                    <span className="w-4 h-4 bg-green-50 rounded-full flex items-center justify-center text-green-600 text-[10px] font-bold">✓</span>
+                                  ) : permissionState === 'denied' ? (
+                                    <span className="w-4 h-4 bg-rose-100 rounded-full flex items-center justify-center text-rose-600 text-[10px] font-bold animate-pulse">✗</span>
+                                  ) : (
+                                    <span className="w-4 h-4 bg-amber-50 rounded-full flex items-center justify-center text-amber-600 text-[10px] font-bold animate-bounce">?</span>
+                                  )}
+                                  <span>Kebenaran GPS: <strong className={`uppercase font-mono text-[9px] px-1 py-0.5 rounded ${
+                                    permissionState === 'granted' ? 'bg-green-100 text-green-700' : permissionState === 'denied' ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700'
+                                  }`}>{permissionState || 'Checking'}</strong></span>
+                                </div>
+
+                                <div className="flex items-center gap-1.5 text-slate-600">
+                                  {studentLat !== null ? (
+                                    <span className="w-4 h-4 bg-green-50 rounded-full flex items-center justify-center text-green-600 text-[10px] font-bold">✓</span>
+                                  ) : (
+                                    <span className="w-4 h-4 bg-slate-100 rounded-full flex items-center justify-center text-slate-400 text-[10px] font-bold animate-pulse">○</span>
+                                  )}
+                                  <span>Koordinat GPS Diterima</span>
+                                </div>
+
+                                <div className="flex items-center gap-1.5 text-slate-600">
+                                  {studentLat !== null && gpsAccuracy !== null ? (
+                                    <span className="w-4 h-4 bg-green-50 rounded-full flex items-center justify-center text-green-600 text-[10px] font-bold">✓</span>
+                                  ) : (
+                                    <span className="w-4 h-4 bg-slate-100 rounded-full flex items-center justify-center text-slate-400 text-[10px] font-bold">○</span>
+                                  )}
+                                  <span>Isyarat GPS: <strong className="text-slate-700">{gpsAccuracy ? `${gpsAccuracy <= 10 ? 'Cemerlang' : 'Sederhana'}` : 'Menunggu'}</strong></span>
+                                </div>
+
+                                <div className="col-span-1 sm:col-span-2 flex items-center gap-1.5 text-slate-600 border-t border-slate-100 pt-2 mt-1">
+                                  {studentLat !== null && isInsideGeofence ? (
+                                    <span className="w-4 h-4 bg-green-50 rounded-full flex items-center justify-center text-green-600 text-[10px] font-bold">✓</span>
+                                  ) : studentLat !== null ? (
+                                    <span className="w-4 h-4 bg-rose-50 rounded-full flex items-center justify-center text-rose-600 text-[10px] font-bold animate-pulse">!</span>
+                                  ) : (
+                                    <span className="w-4 h-4 bg-slate-100 rounded-full flex items-center justify-center text-slate-400 text-[10px] font-bold">○</span>
+                                  )}
+                                  <span>Kedudukan Fizikal: <strong className={studentLat !== null ? (isInsideGeofence ? 'text-green-600' : 'text-rose-600') : 'text-slate-400'}>
+                                    {studentLat !== null ? (isInsideGeofence ? 'Di Dalam Kawasan Kuliah' : 'Di Luar Kawasan Kuliah') : 'Menunggu Isyarat GPS'}
+                                  </strong></span>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Permission Denied Guide */}
+                            {permissionState === 'denied' && (
+                              <div className="bg-rose-50 border border-rose-100 rounded-2xl p-4 space-y-2.5 animate-fade-in text-xs">
+                                <p className="text-rose-800 font-extrabold flex items-center gap-1.5">
+                                  <AlertTriangle className="w-4 h-4 shrink-0 text-rose-600 animate-bounce" />
+                                  <span>Kebenaran Lokasi Disekat (GPS Permission Denied)</span>
+                                </p>
+                                <p className="text-slate-600 leading-relaxed">
+                                  Anda telah menyekat akses lokasi untuk aplikasi ini. Sistem memerlukan koordinat GPS anda untuk mengesahkan bahawa anda berada di dalam bilik kuliah untuk mendaftar kehadiran.
+                                </p>
+                                <div className="bg-white border border-rose-100 rounded-xl p-3 text-slate-500 space-y-1">
+                                  <p className="font-bold text-slate-700 text-[11px]">Cara membenarkan semula akses:</p>
+                                  <ol className="list-decimal pl-4 space-y-0.5 text-[10px]">
+                                    <li>Klik ikon mangga/kunci (🔒 atau ℹ️) di sebelah kiri URL browser anda.</li>
+                                    <li>Cari menu <strong className="text-slate-700">Location</strong> dan tukar tetapan kepada <strong className="text-green-600">Allow</strong>.</li>
+                                    <li>Segarkan (Refresh) halaman web ini dan dapatkan semula isyarat lokasi anda.</li>
+                                  </ol>
                                 </div>
                               </div>
                             )}
 
-                            {/* Live Geofence Map (Google Maps equivalent) */}
+                            {/* Location stats & Accuracy details */}
+                            {studentLat !== null && (
+                              <div className="space-y-2">
+                                <div className="grid grid-cols-2 gap-2 text-[10px] font-mono text-slate-400 bg-white p-2.5 rounded-xl border border-slate-100">
+                                  <div>
+                                    <p className="font-semibold text-slate-500">YOUR COORDS:</p>
+                                    <p className="text-slate-700 mt-0.5 font-bold">{studentLat.toFixed(5)}, {studentLng?.toFixed(5)}</p>
+                                  </div>
+                                  <div>
+                                    <p className="font-semibold text-slate-500">CLASS COORDS:</p>
+                                    <p className="text-slate-700 mt-0.5 font-bold">{targetSession?.latitude?.toFixed(5)}, {targetSession?.longitude?.toFixed(5)}</p>
+                                  </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-2 text-[10px] bg-slate-200/30 p-2 rounded-xl border border-slate-200/40 text-slate-600 font-semibold">
+                                  <div className="flex items-center gap-1">
+                                    <Wifi className="w-3.5 h-3.5 text-blue-500" />
+                                    <span>Ralat GPS: <strong className="text-slate-800">{gpsAccuracy ? `±${gpsAccuracy.toFixed(1)} meter` : '±5.0m'}</strong></span>
+                                  </div>
+                                  <div className="flex items-center gap-1 justify-end">
+                                    <Clock className="w-3.5 h-3.5 text-blue-500" />
+                                    <span>Dikemaskini: <strong className="text-slate-800">{lastLocationUpdate || 'Sekarang'}</strong></span>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Live Geofence Map */}
                             {targetSession && targetSession.latitude && targetSession.longitude && (
                               <div className="rounded-2xl overflow-hidden border border-slate-200 shadow-xs">
                                 <PolikuMap
@@ -632,8 +1285,6 @@ export default function StudentDashboard() {
                                 />
                               </div>
                             )}
-
-
 
                             {/* Geofence warning & Bermasalah status info */}
                             {studentLat !== null && !isInsideGeofence && (
@@ -652,15 +1303,15 @@ export default function StudentDashboard() {
                             )}
 
                             {/* Actions panel */}
-                            <div className="flex gap-2">
+                            <div className="w-full">
                               <button
                                 type="button"
                                 onClick={getStudentLocation}
                                 disabled={isFetchingLocation}
-                                className="flex-1 bg-white hover:bg-slate-50 border border-slate-200 active:bg-slate-100 text-slate-700 font-bold py-2 px-3 rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                                className="w-full bg-white hover:bg-slate-50 border border-slate-200 active:bg-slate-100 text-slate-700 font-extrabold py-3 px-4 rounded-xl text-xs flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50"
                               >
-                                <Navigation className={`w-3.5 h-3.5 ${isFetchingLocation ? 'animate-spin' : ''}`} />
-                                {studentLat !== null ? 'Refresh GPS' : 'Retrieve My Location'}
+                                <Navigation className={`w-4 h-4 text-blue-600 ${isFetchingLocation ? 'animate-spin' : ''}`} />
+                                <span>Segarkan GPS (Refresh Coordinates)</span>
                               </button>
                             </div>
                           </div>
@@ -670,55 +1321,40 @@ export default function StudentDashboard() {
                             <span>This class does not require GPS geofencing verification.</span>
                           </div>
                         )}
-
-                        {/* Developer Simulation / Mocking helper */}
-                        <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-3 space-y-2">
-                          <div className="flex justify-between items-center text-[10px] font-bold text-blue-700 uppercase">
-                            <span>POLIKU Sandbox Simulation</span>
-                            <span className="bg-blue-100 text-blue-800 py-0.5 px-1.5 rounded text-[9px]">Developer Tool</span>
-                          </div>
-                          <p className="text-[10px] text-blue-600 leading-relaxed font-medium">
-                            Iframe sandbox environments can restrict actual browser GPS access. Use these controls to simulate checking-in:
-                          </p>
-                          <div className="grid grid-cols-2 gap-2 pt-0.5">
-                            <button
-                              type="button"
-                              onClick={() => mockStudentLocation(true)}
-                              className="bg-white hover:bg-green-50 border border-green-200 hover:border-green-300 text-green-700 font-semibold py-1.5 px-2 rounded-lg text-[10px] transition-all cursor-pointer flex items-center justify-center gap-1"
-                            >
-                              <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span> Mock Inside Range
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => mockStudentLocation(false)}
-                              className="bg-white hover:bg-amber-50 border border-amber-200 hover:border-amber-300 text-amber-700 font-semibold py-1.5 px-2 rounded-lg text-[10px] transition-all cursor-pointer flex items-center justify-center gap-1"
-                            >
-                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span> Mock Outside Range
-                            </button>
-                          </div>
-                        </div>
                       </div>
                     )}
 
 
 
+                    {!selectedSessionId && (
+                      <div className="bg-slate-50/50 border border-slate-100 rounded-2xl p-6 text-center text-slate-500 animate-pulse">
+                        <Compass className="w-8 h-8 text-blue-500 mx-auto mb-2 animate-spin" style={{ animationDuration: '6s' }} />
+                        <p className="text-xs font-black text-slate-700">Sila Pilih Kad Kursus Di Atas</p>
+                        <p className="text-[10px] text-slate-400 mt-1 max-w-[280px] mx-auto">Tap pada salah satu kad kursus aktif di atas untuk memulakan verifikasi lokasi GPS peranti anda dan menghantar kehadiran.</p>
+                      </div>
+                    )}
+
                     <button
                       type="submit"
-                      disabled={isSubmitting || (isGeofenced && (studentLat === null || studentLng === null))}
-                      className="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold py-3 rounded-xl flex items-center justify-center gap-2 text-sm shadow-md shadow-blue-100 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      disabled={!selectedSessionId || isSubmitting || (isGeofenced && (studentLat === null || studentLng === null))}
+                      className="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-extrabold py-3.5 rounded-xl flex items-center justify-center gap-2 text-xs uppercase tracking-wider shadow-md shadow-blue-100 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-lg active:scale-99"
                     >
-                      {isSubmitting ? (
+                      {!selectedSessionId ? (
                         <>
-                          <div className="w-5 h-5 border-2 border-slate-300 border-t-white rounded-full animate-spin"></div>
-                          Verifying attendance...
+                          Sila Pilih Kelas Dahulu <Compass className="w-4 h-4" />
+                        </>
+                      ) : isSubmitting ? (
+                        <>
+                          <div className="w-4.5 h-4.5 border-2 border-slate-300 border-t-white rounded-full animate-spin"></div>
+                          Verifikasi Kehadiran...
                         </>
                       ) : isGeofenced && (studentLat === null || studentLng === null) ? (
                         <>
-                          Awaiting GPS Location... <Compass className="w-4 h-4 animate-pulse" />
+                          Menunggu Isyarat GPS... <Compass className="w-4 h-4 animate-pulse" />
                         </>
                       ) : (
                         <>
-                          Check-In Now <ArrowRight className="w-4 h-4" />
+                          Hantar Kehadiran Sekarang <ArrowRight className="w-4 h-4" />
                         </>
                       )}
                     </button>
@@ -729,7 +1365,7 @@ export default function StudentDashboard() {
             </div>
 
             {/* Attendance History & Exemption Centre */}
-            <div className={`bg-white border border-slate-100 rounded-3xl p-6 shadow-sm ${activeTab === 'history' ? 'block' : 'hidden'} md:block space-y-6`}>
+            <div className={`bg-white border border-slate-100 rounded-3xl p-6 shadow-sm ${activeTab === 'history' ? 'block animate-fade-in' : 'hidden'} space-y-6`}>
               <div>
                 <h3 className="font-bold text-slate-800 text-base mb-1 flex items-center gap-2">
                   <BookOpen className="w-5 h-5 text-blue-600" /> Pusat Kehadiran & Pelepasan
@@ -761,6 +1397,11 @@ export default function StudentDashboard() {
                           <div>
                             <div className="flex items-center gap-2">
                               <p className="font-bold text-slate-800 text-xs sm:text-sm">{sess ? sess.courseName : 'Course Name'}</p>
+                              {sess?.deliveryMode === 'online' && (
+                                <span className="flex items-center gap-0.5 text-[8px] font-black bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded uppercase">
+                                  <Globe className="w-2 h-2" /> Online
+                                </span>
+                              )}
                               <span className="font-mono text-[9px] bg-slate-100 text-slate-500 font-extrabold px-1.5 py-0.5 rounded">
                                 {sess ? sess.courseCode : 'CODE'}
                               </span>
@@ -1043,38 +1684,49 @@ export default function StudentDashboard() {
       </main>
 
       {/* Bottom Navigation Menu for Mobile */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur-md border-t border-slate-100/80 shadow-[0_-4px_24px_rgba(0,0,0,0.04)] flex justify-around items-center pt-2.5 pb-4 px-4">
+      <div className="md:hidden fixed bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur-md border-t border-slate-100/80 shadow-[0_-4px_24px_rgba(0,0,0,0.04)] flex justify-around items-center pt-2.5 pb-4 px-2">
         <button
           type="button"
           onClick={() => setActiveTab('checkin')}
-          className={`flex flex-col items-center justify-center py-1 px-3 min-w-[72px] transition-all cursor-pointer ${
+          className={`flex flex-col items-center justify-center py-1 px-2.5 min-w-[64px] transition-all cursor-pointer ${
             activeTab === 'checkin' ? 'text-blue-600 scale-105 font-bold' : 'text-slate-400 font-medium'
           }`}
         >
-          <ClipboardCheck className={`w-5.5 h-5.5 mb-1 transition-all ${activeTab === 'checkin' ? 'text-blue-600 stroke-[2.5px]' : 'text-slate-400'}`} />
-          <span className="text-[10px] tracking-tight">Check-In</span>
+          <ClipboardCheck className={`w-5 h-5 mb-1 transition-all ${activeTab === 'checkin' ? 'text-blue-600 stroke-[2.5px]' : 'text-slate-400'}`} />
+          <span className="text-[9px] tracking-tight">Check-In</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('courses')}
+          className={`flex flex-col items-center justify-center py-1 px-2.5 min-w-[64px] transition-all cursor-pointer ${
+            activeTab === 'courses' ? 'text-blue-600 scale-105 font-bold' : 'text-slate-400 font-medium'
+          }`}
+        >
+          <BookOpen className={`w-5 h-5 mb-1 transition-all ${activeTab === 'courses' ? 'text-blue-600 stroke-[2.5px]' : 'text-slate-400'}`} />
+          <span className="text-[9px] tracking-tight">Kursus Saya</span>
         </button>
 
         <button
           type="button"
           onClick={() => setActiveTab('history')}
-          className={`flex flex-col items-center justify-center py-1 px-3 min-w-[72px] transition-all cursor-pointer ${
+          className={`flex flex-col items-center justify-center py-1 px-2.5 min-w-[64px] transition-all cursor-pointer ${
             activeTab === 'history' ? 'text-blue-600 scale-105 font-bold' : 'text-slate-400 font-medium'
           }`}
         >
-          <Clock className={`w-5.5 h-5.5 mb-1 transition-all ${activeTab === 'history' ? 'text-blue-600 stroke-[2.5px]' : 'text-slate-400'}`} />
-          <span className="text-[10px] tracking-tight">History</span>
+          <Clock className={`w-5 h-5 mb-1 transition-all ${activeTab === 'history' ? 'text-blue-600 stroke-[2.5px]' : 'text-slate-400'}`} />
+          <span className="text-[9px] tracking-tight">Rekod</span>
         </button>
 
         <button
           type="button"
           onClick={() => setActiveTab('profile')}
-          className={`flex flex-col items-center justify-center py-1 px-3 min-w-[72px] transition-all cursor-pointer ${
+          className={`flex flex-col items-center justify-center py-1 px-2.5 min-w-[64px] transition-all cursor-pointer ${
             activeTab === 'profile' ? 'text-blue-600 scale-105 font-bold' : 'text-slate-400 font-medium'
           }`}
         >
-          <User className={`w-5.5 h-5.5 mb-1 transition-all ${activeTab === 'profile' ? 'text-blue-600 stroke-[2.5px]' : 'text-slate-400'}`} />
-          <span className="text-[10px] tracking-tight">Profile</span>
+          <User className={`w-5 h-5 mb-1 transition-all ${activeTab === 'profile' ? 'text-blue-600 stroke-[2.5px]' : 'text-slate-400'}`} />
+          <span className="text-[9px] tracking-tight">Profil</span>
         </button>
       </div>
 
@@ -1121,6 +1773,252 @@ export default function StudentDashboard() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+
+      {/* POPUP MODAL: Student Course Enrollment & QR Scanner */}
+      {showScannerModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-3xl border border-slate-100 shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh]"
+          >
+            {/* Modal Header */}
+            <div className="bg-slate-900 text-white p-5 flex justify-between items-center shrink-0">
+              <div>
+                <h4 className="font-extrabold text-sm flex items-center gap-1.5">
+                  <QrCode className="w-4.5 h-4.5 text-blue-400" /> Daftar Kursus Baharu (Course Registration)
+                </h4>
+                <p className="text-[10px] text-slate-400">Scan course QR code or enter manual code to enroll</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowScannerModal(false);
+                  setScannedCourse(null);
+                  setScanningSuccess(false);
+                  setIsScanning(false);
+                }}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/10 text-lg font-bold transition-all cursor-pointer"
+              >
+                ×
+              </button>
+            </div>
+
+            {/* Selector Tabs */}
+            <div className="flex border-b border-slate-100 shrink-0">
+              <button
+                type="button"
+                onClick={() => setScannerMode('simulation')}
+                className={`flex-1 py-3 text-center text-xs font-black transition-all border-b-2 ${
+                  scannerMode === 'simulation' || scannerMode === 'camera'
+                    ? 'border-blue-600 text-blue-600 font-bold bg-blue-50/20'
+                    : 'border-transparent text-slate-400 hover:text-slate-600'
+                }`}
+              >
+                🎥 Imbas QR Kod
+              </button>
+              <button
+                type="button"
+                onClick={() => setScannerMode('manual')}
+                className={`flex-1 py-3 text-center text-xs font-black transition-all border-b-2 ${
+                  scannerMode === 'manual'
+                    ? 'border-blue-600 text-blue-600 font-bold bg-blue-50/20'
+                    : 'border-transparent text-slate-400 hover:text-slate-600'
+                }`}
+              >
+                ✍️ Kod Manual
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 overflow-y-auto max-h-[calc(90vh-130px)] space-y-5">
+              
+              {/* TAB 1: QR CODE IMAGES & VIEWFINDER SIMULATION */}
+              {(scannerMode === 'simulation' || scannerMode === 'camera') && (
+                <div className="space-y-4">
+                  
+                  {/* Camera vs Simulation toggle */}
+                  <div className="flex items-center justify-between p-1 bg-slate-100 rounded-xl text-xs text-slate-600">
+                    <button
+                      type="button"
+                      onClick={() => setScannerMode('simulation')}
+                      className={`flex-1 py-1.5 rounded-lg font-bold transition-all ${scannerMode === 'simulation' ? 'bg-white text-slate-800 shadow-3xs' : 'text-slate-500 hover:text-slate-700'}`}
+                    >
+                      🚀 Simulasi Imbasan (Demo)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setScannerMode('camera')}
+                      className={`flex-1 py-1.5 rounded-lg font-bold transition-all ${scannerMode === 'camera' ? 'bg-white text-slate-800 shadow-3xs' : 'text-slate-500 hover:text-slate-700'}`}
+                    >
+                      📷 Kamera Live (Webcam)
+                    </button>
+                  </div>
+
+                  {/* QR Scan Viewport */}
+                  <div className="relative bg-slate-900 rounded-2xl h-52 overflow-hidden border border-slate-850 shadow-inner flex flex-col items-center justify-center">
+                    
+                    {/* Live Camera Feed */}
+                    {scannerMode === 'camera' && (
+                      <div className="absolute inset-0 w-full h-full">
+                        {cameraPermission === 'prompt' && (
+                          <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-4 text-slate-400 text-xs">
+                            <Camera className="w-8 h-8 mb-2 text-slate-500 animate-pulse" />
+                            <p className="font-semibold">Menghubungkan Kamera Peranti...</p>
+                            <p className="text-[10px] text-slate-500 mt-1">Sila berikan kebenaran kamera pada pelayar anda.</p>
+                          </div>
+                        )}
+                        {cameraPermission === 'denied' && (
+                          <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-4 text-slate-400 text-xs bg-slate-950">
+                            <AlertTriangle className="w-8 h-8 mb-2 text-amber-500" />
+                            <p className="font-semibold text-slate-200">Akses Kamera Disekat / Gagal</p>
+                            <p className="text-[10px] text-slate-500 mt-1 max-w-[250px]">Kamera tidak dapat diakses atau disekat oleh sekatan iFrame. Sila gunakan mod Simulasi.</p>
+                          </div>
+                        )}
+                        <video id="qr-video" className="w-full h-full object-cover" playsInline muted />
+                      </div>
+                    )}
+
+                    {/* Simulation Frame */}
+                    {scannerMode === 'simulation' && (
+                      <div className="absolute inset-0 w-full h-full flex flex-col items-center justify-center bg-slate-950 text-center p-4">
+                        {isScanning ? (
+                          <div className="space-y-3 z-10">
+                            <div className="relative flex items-center justify-center">
+                              <span className="animate-ping absolute inline-flex h-10 w-10 rounded-full bg-blue-400 opacity-75"></span>
+                              <QrCode className="w-10 h-10 text-blue-400 relative" />
+                            </div>
+                            <p className="text-xs font-bold text-slate-100 tracking-wide animate-pulse">Mengimbas Kod QR...</p>
+                            <p className="text-[10px] text-blue-400 font-mono">Payload: enroll:{scannedCourse?.id}</p>
+                          </div>
+                        ) : scanningSuccess ? (
+                          <div className="space-y-3 z-10 text-green-400 animate-in zoom-in duration-300">
+                            <CheckCircle2 className="w-12 h-12 mx-auto text-green-400" />
+                            <p className="text-xs font-extrabold tracking-wide">Imbasan Berjaya!</p>
+                            <p className="text-[10px] text-slate-300 font-bold">{scannedCourse?.code} - {scannedCourse?.name}</p>
+                          </div>
+                        ) : (
+                          <div className="space-y-2 z-10 text-slate-400 max-w-[260px]">
+                            <QrCode className="w-8 h-8 mx-auto text-slate-600" />
+                            <p className="text-xs font-bold text-slate-300">Sedia untuk Mengimbas</p>
+                            <p className="text-[10px] text-slate-500 leading-normal">
+                              Pilih mana-mana kursus di bawah untuk mensimulasikan imbasan kod QR bercetak pensyarah secara interaktif!
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Laser overlay during scan */}
+                    {isScanning && (
+                      <div className="absolute inset-x-0 top-0 h-1 bg-blue-500 shadow-[0_0_15px_#3b82f6] z-20 animate-bounce" style={{ animationDuration: '2s' }} />
+                    )}
+
+                    {/* Focus boundaries bracket overlay */}
+                    <div className="absolute w-44 h-32 border-2 border-slate-700/40 rounded-xl z-10 pointer-events-none flex items-center justify-center">
+                      <div className="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-blue-500 rounded-tl-md"></div>
+                      <div className="absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 border-blue-500 rounded-tr-md"></div>
+                      <div className="absolute bottom-0 left-0 w-4 h-4 border-b-2 border-l-2 border-blue-500 rounded-bl-md"></div>
+                      <div className="absolute bottom-0 right-0 w-4 h-4 border-b-2 border-r-2 border-blue-500 rounded-br-md"></div>
+                    </div>
+                  </div>
+
+                  {/* Course Picker list for Simulating Scan */}
+                  {scannerMode === 'simulation' && (
+                    <div className="space-y-2">
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Simulasikan Imbasan QR Pensyarah:</p>
+                      
+                      {courses.filter(c => !enrolledCourseIds.includes(c.id)).length === 0 ? (
+                        <div className="p-4 rounded-xl border border-dashed border-slate-150 text-slate-400 text-center text-xs bg-slate-50 italic">
+                          Semua kursus sedia ada telah berdaftar. Sila cipta kursus baru di Dashboard Pensyarah terlebih dahulu!
+                        </div>
+                      ) : (
+                        <div className="space-y-2 max-h-[180px] overflow-y-auto pr-1">
+                          {courses
+                            .filter(c => !enrolledCourseIds.includes(c.id))
+                            .map((course) => (
+                              <button
+                                key={course.id}
+                                type="button"
+                                disabled={isScanning}
+                                onClick={() => handleSimulatedScan(course)}
+                                className="w-full flex items-center justify-between p-3 border border-slate-150 hover:border-blue-200 bg-slate-50/40 hover:bg-blue-50/10 rounded-2xl transition-all text-left text-xs cursor-pointer group"
+                              >
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="font-black text-[9px] bg-blue-50 text-blue-600 px-1.5 rounded uppercase">{course.code}</span>
+                                    <span className="text-[9px] text-slate-400 font-bold">{course.location}</span>
+                                  </div>
+                                  <p className="font-bold text-slate-800 mt-1 truncate">{course.name}</p>
+                                </div>
+                                <span className="bg-blue-600 group-hover:bg-blue-700 text-white font-extrabold text-[10px] px-2.5 py-1 rounded-xl shadow-3xs group-hover:scale-103 transition-all shrink-0 ml-2">
+                                  Imbas QR (Scan)
+                                </span>
+                              </button>
+                            ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Camera prompt guidelines */}
+                  {scannerMode === 'camera' && (
+                    <div className="bg-slate-50 border border-slate-150 rounded-2xl p-3 text-[11px] text-slate-500 space-y-1.5 leading-relaxed">
+                      <p className="font-bold text-slate-700 flex items-center gap-1">
+                        <Camera className="w-3.5 h-3.5 text-blue-600" /> Panduan Imbasan Kamera:
+                      </p>
+                      <p>1. Dekatkan kamera telefon/peranti ke hadapan kod QR pendaftaran kursus pensyarah.</p>
+                      <p>2. Pastikan kod QR berada di dalam bingkai segi empat biru di atas.</p>
+                      <p className="text-[10px] text-slate-400 italic">Nota: Oleh kerana sekatan keselamatan di dalam iFrame AI Studio, beberapa penyemak imbas menyekat akses perkakasan kamera. Jika kamera anda tidak menyala, sila pilih tab <strong>Simulasi Imbasan</strong> di atas untuk menguji fungsi ini secara automatik.</p>
+                    </div>
+                  )}
+
+                </div>
+              )}
+
+              {/* TAB 2: MANUAL COURSE CODE ENROLLMENT FORM */}
+              {scannerMode === 'manual' && (
+                <form onSubmit={handleManualEnroll} className="space-y-4">
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-black text-slate-500 uppercase">Kod Kursus Rasmi (Course Code)</label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        required
+                        placeholder="Contoh: DJJ31022"
+                        value={manualCourseCode}
+                        onChange={(e) => setManualCourseCode(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3.5 text-sm text-slate-700 placeholder-slate-400 focus:bg-white focus:ring-2 focus:ring-blue-100 focus:border-blue-500 outline-none transition-all font-mono uppercase tracking-wider text-slate-700"
+                      />
+                    </div>
+                    <p className="text-[10px] text-slate-400 leading-normal">Masukkan kod kursus pensyarah secara manual untuk mendaftar tanpa imbasan kamera.</p>
+                  </div>
+
+                  <div className="bg-slate-50 border border-slate-100 rounded-2xl p-3 text-[10px] text-slate-500 leading-relaxed">
+                    <p className="font-semibold text-slate-600 mb-1">Kursus Aktif Dalam Sistem (Available Course Codes):</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {courses.map(c => (
+                        <span key={c.id} className="bg-white border border-slate-200 text-slate-700 font-mono text-[9px] px-1.5 py-0.5 rounded uppercase font-bold">
+                          {c.code}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-extrabold py-2.5 rounded-xl text-xs transition-all cursor-pointer shadow-md shadow-blue-100"
+                  >
+                    Daftar Masuk Kursus (Enroll Course)
+                  </button>
+                </form>
+              )}
+
+            </div>
+          </motion.div>
         </div>
       )}
     </div>

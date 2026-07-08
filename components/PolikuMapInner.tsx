@@ -107,6 +107,7 @@ export default function PolikuMapInner({
         mapRef.current = null;
       }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Update location helper

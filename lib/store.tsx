@@ -1,6 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { toast } from 'sonner';
 
 export type Role = 'lecturer' | 'student';
 
@@ -12,6 +13,7 @@ export interface User {
   role: Role;
   matricNo?: string;
   classGroup?: string;
+  enrolledCourses?: string[];
 }
 
 export interface AttendanceSession {
@@ -30,6 +32,7 @@ export interface AttendanceSession {
   radius?: number; // In meters
   week?: number; // Week number (e.g. 1-14)
   hours?: number; // Hours for this lecture session (e.g. 1, 2, 3)
+  deliveryMode?: 'f2f' | 'online';
 }
 
 export interface Course {
@@ -66,17 +69,34 @@ export interface AttendanceRecord {
   approvalNotes?: string;
 }
 
+export interface AttendanceAlert {
+  id: string;
+  studentId: string;
+  studentName: string;
+  studentEmail: string;
+  courseCode: string;
+  courseName: string;
+  attendanceRate: number;
+  threshold: number;
+  timestamp: string;
+  type: 'email' | 'in_app' | 'both';
+  message: string;
+  status: 'sent' | 'read';
+}
+
 interface AppStoreContextType {
   isLoggedIn: boolean;
   currentUser: User | null;
   sessions: AttendanceSession[];
   records: AttendanceRecord[];
   courses: Course[];
+  alerts: AttendanceAlert[];
   setCurrentUser: (user: User | null) => void;
   loginState: (state: boolean) => void;
   setSessions: (sessions: AttendanceSession[]) => void;
   setRecords: (records: AttendanceRecord[]) => void;
   setCourses: (courses: Course[]) => void;
+  setAlerts: (alerts: AttendanceAlert[]) => void;
   logout: () => void;
 }
 
@@ -90,6 +110,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [sessions, setSessions] = useState<AttendanceSession[]>([]);
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
+  const [alerts, setAlerts] = useState<AttendanceAlert[]>([]);
 
   // Load from localStorage on mount
   useEffect(() => {
@@ -122,7 +143,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             studentCount: 2,
             latitude: 1.6033,
             longitude: 110.3547,
-            radius: 50
+            radius: 50,
+            deliveryMode: 'f2f'
           },
           {
             id: 'sess-2',
@@ -137,7 +159,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             studentCount: 4,
             latitude: 1.6033,
             longitude: 110.3547,
-            radius: 50
+            radius: 50,
+            deliveryMode: 'f2f'
           }
         ];
         setSessions(mockSessions);
@@ -246,6 +269,30 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setCourses(mockCourses);
         localStorage.setItem('e_attendance_courses', JSON.stringify(mockCourses));
       }
+
+      const storedAlerts = localStorage.getItem('e_attendance_alerts');
+      if (storedAlerts) {
+        setAlerts(JSON.parse(storedAlerts));
+      } else {
+        const mockAlerts: AttendanceAlert[] = [
+          {
+            id: 'alert-1',
+            studentId: 'stud-1',
+            studentName: 'Ahmad bin Syafiq',
+            studentEmail: 'ahmad@student.poliku.edu.my',
+            courseCode: 'DKM5012',
+            courseName: 'Thermodynamics II',
+            attendanceRate: 71.4,
+            threshold: 80,
+            timestamp: new Date().toISOString(),
+            type: 'both',
+            message: 'Amaran: Kehadiran anda bagi Thermodynamics II adalah 71.4% (had minimum 80.0%). Sila ambil tindakan segera untuk mengelakkan daripada dihalang menduduki peperiksaan.',
+            status: 'sent'
+          }
+        ];
+        setAlerts(mockAlerts);
+        localStorage.setItem('e_attendance_alerts', JSON.stringify(mockAlerts));
+      }
     }
   }, []);
 
@@ -278,12 +325,67 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem('e_attendance_courses', JSON.stringify(newCourses));
   };
 
+  const handleSetAlerts = (newAlerts: AttendanceAlert[]) => {
+    setAlerts(newAlerts);
+    localStorage.setItem('e_attendance_alerts', JSON.stringify(newAlerts));
+  };
+
   const logout = () => {
     setIsLoggedIn(false);
     setCurrentUser(null);
     localStorage.removeItem('e_attendance_logged_in');
     localStorage.removeItem('e_attendance_user');
   };
+
+  // Automatically log users out after 15 minutes of inactivity/idleness
+  useEffect(() => {
+    if (!isLoggedIn) return;
+
+    let timeoutId: NodeJS.Timeout;
+
+    const resetTimer = () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      
+      // 15 minutes = 15 * 60 * 1000 = 900,000 milliseconds
+      timeoutId = setTimeout(() => {
+        logout();
+        toast.error("You have been automatically logged out due to 15 minutes of inactivity.", {
+          id: 'inactivity-logout-toast',
+          duration: 10000,
+        });
+      }, 15 * 60 * 1000);
+    };
+
+    // Initialize timer on mount or when logged-in state changes
+    resetTimer();
+
+    // Core list of user interaction events to monitor
+    const interactionEvents = [
+      'mousedown',
+      'mousemove',
+      'keypress',
+      'scroll',
+      'touchstart',
+      'click'
+    ];
+
+    const handleUserActivity = () => {
+      resetTimer();
+    };
+
+    // Attach listeners
+    interactionEvents.forEach(event => {
+      window.addEventListener(event, handleUserActivity, { passive: true });
+    });
+
+    // Clean up event listeners and clear timeout on unmount or logout
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      interactionEvents.forEach(event => {
+        window.removeEventListener(event, handleUserActivity);
+      });
+    };
+  }, [isLoggedIn]);
 
   return (
     <AppStoreContext.Provider value={{
@@ -292,11 +394,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       sessions,
       records,
       courses,
+      alerts,
       setCurrentUser: handleSetCurrentUser,
       loginState,
       setSessions: handleSetSessions,
       setRecords: handleSetRecords,
       setCourses: handleSetCourses,
+      setAlerts: handleSetAlerts,
       logout
     }}>
       {children}

@@ -1,12 +1,12 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useAppStore, AttendanceSession, AttendanceRecord } from '@/lib/store';
+import { useAppStore, AttendanceSession, AttendanceRecord, Course } from '@/lib/store';
 import { 
   LogOut, Plus, Users, CheckCircle, Clock, ClipboardList, 
   FileDown, Search, QrCode, BookOpen, Layers, ShieldCheck, RefreshCw,
   MapPin, Navigation, Compass, AlertTriangle, Settings, Info, Check, User,
-  LayoutDashboard
+  LayoutDashboard, Globe
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { toast } from 'sonner';
@@ -14,10 +14,19 @@ import { POLIKU_PRESETS, getCurrentCoordinates } from '@/lib/geoUtils';
 import PolikuMap from './PolikuMap';
 
 export default function LecturerDashboard() {
-  const { currentUser, sessions, setSessions, records, setRecords, logout, courses = [], setCourses } = useAppStore();
+  const { currentUser, sessions, setSessions, records, setRecords, logout, courses = [], setCourses, alerts = [], setAlerts } = useAppStore();
   
   // Active Tab for mobile bottom menu & desktop tab toggle
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'sessions' | 'records' | 'courses' | 'account'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'sessions' | 'records' | 'courses' | 'account' | 'alerts'>('dashboard');
+
+  // Attendance Alert system states
+  const [attendanceThreshold, setAttendanceThreshold] = useState(80);
+  const [alertTypeFilter, setAlertTypeFilter] = useState<'all' | 'email' | 'in_app' | 'both'>('all');
+  const [warningMessageTemplate, setWarningMessageTemplate] = useState(
+    'Amaran Kehadiran: Kehadiran anda untuk {course_name} ({course_code}) setakat ini adalah {attendance_rate}%, iaitu di bawah had minimum {threshold}%. Sila berjumpa dengan pensyarah anda dengan kadar segera.'
+  );
+  const [isSendingBulk, setIsSendingBulk] = useState(false);
+  const [sendingAlertKey, setSendingAlertKey] = useState<string | null>(null);
 
   // Course Management Form States
   const [regCode, setRegCode] = useState('');
@@ -35,7 +44,10 @@ export default function LecturerDashboard() {
   // Dashboard states
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showCourseGpsModal, setShowCourseGpsModal] = useState(false);
+  const [showRegisterCourseModal, setShowRegisterCourseModal] = useState(false);
   const [showSessionGpsModal, setShowSessionGpsModal] = useState(false);
+  const [showCourseQRModal, setShowCourseQRModal] = useState(false);
+  const [selectedCourseForQR, setSelectedCourseForQR] = useState<Course | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedSessionId, setSelectedSessionId] = useState<string>('all');
   
@@ -50,6 +62,7 @@ export default function LecturerDashboard() {
   const [sessionWeek, setSessionWeek] = useState('1');
   const [sessionHours, setSessionHours] = useState('2');
   const [createFullSemester, setCreateFullSemester] = useState(false);
+  const [deliveryMode, setDeliveryMode] = useState<'f2f' | 'online'>('f2f');
   
   // Geofencing states
   const [useGeofencing, setUseGeofencing] = useState(true);
@@ -165,6 +178,7 @@ export default function LecturerDashboard() {
 
     setCourses([...courses, newCourse]);
     toast.success(`Course ${newCourse.code} registered successfully!`);
+    setShowRegisterCourseModal(false);
     
     // Reset Form
     setRegCode('');
@@ -244,7 +258,8 @@ export default function LecturerDashboard() {
           longitude: finalLng,
           radius: finalRadius,
           week: w,
-          hours: parseFloat(sessionHours) || undefined
+          hours: parseFloat(sessionHours) || undefined,
+          deliveryMode: deliveryMode
         });
       }
       
@@ -269,7 +284,8 @@ export default function LecturerDashboard() {
         longitude: finalLng,
         radius: finalRadius,
         week: parseInt(sessionWeek) || undefined,
-        hours: parseFloat(sessionHours) || undefined
+        hours: parseFloat(sessionHours) || undefined,
+        deliveryMode: deliveryMode
       };
 
       setSessions([newSession, ...sessions]);
@@ -291,6 +307,7 @@ export default function LecturerDashboard() {
     setSessionWeek('1');
     setSessionHours('2');
     setCreateFullSemester(false);
+    setDeliveryMode('f2f');
   };
 
   // Close active session
@@ -415,6 +432,168 @@ export default function LecturerDashboard() {
     setLecturerNotes('');
   };
 
+  // Helper to calculate student lists under the threshold
+  const getStudentsBelowThreshold = () => {
+    // Collect all students. If none in records, let's use standard default students to simulate beautifully!
+    const studentsToScan = [
+      { id: 'stud-1', name: 'Ahmad bin Syafiq', matricNo: '20DKM21F1001', classGroup: 'DKM3C', email: 'ahmad@student.poliku.edu.my' },
+      { id: 'stud-2', name: 'Chong Wei Ming', matricNo: '20DKM21F1005', classGroup: 'DKM3C', email: 'chong@student.poliku.edu.my' },
+      { id: 'stud-3', name: 'Siti Nurhaliza', matricNo: '20DKM21F1012', classGroup: 'DKM5A', email: 'siti@student.poliku.edu.my' },
+      { id: 'mock-user-student', name: 'Aiman Hakim', matricNo: '20DKM21F1012', classGroup: 'DKM1C', email: 'aiman@student.poliku.edu.my' }
+    ];
+
+    // Ensure we also grab any dynamic student records that were created or are currently registered in records!
+    records.forEach(r => {
+      if (!studentsToScan.some(s => s.id === r.studentId)) {
+        studentsToScan.push({
+          id: r.studentId,
+          name: r.studentName,
+          matricNo: r.matricNo,
+          classGroup: r.classGroup,
+          email: `${r.studentName.toLowerCase().replace(/\s+/g, '')}@student.poliku.edu.my`
+        });
+      }
+    });
+
+    const result: any[] = [];
+
+    // Loop courses
+    courses.forEach(course => {
+      // Find completed sessions for this course
+      const courseSessions = sessions.filter(s => s.courseCode === course.code && s.status === 'completed');
+      if (courseSessions.length === 0) return; // If no sessions are completed yet, skip
+
+      studentsToScan.forEach(student => {
+        // Only evaluate if student is in the course's classGroup or has records for this course sessions
+        const studentClass = student.classGroup.toUpperCase();
+        const hasSessionInClass = courseSessions.some(s => s.classGroup.toUpperCase() === studentClass);
+        const hasRecord = records.some(r => {
+          const s = sessions.find(sess => sess.id === r.sessionId);
+          return r.studentId === student.id && s?.courseCode === course.code;
+        });
+
+        if (hasSessionInClass || hasRecord) {
+          // Count attendance
+          let attendedCount = 0;
+          let totalSessionsCount = courseSessions.length;
+
+          courseSessions.forEach(sess => {
+            const rec = records.find(r => r.sessionId === sess.id && r.studentId === student.id);
+            if (rec) {
+              if (rec.status === 'present' || rec.status === 'late') {
+                attendedCount++;
+              } else if (rec.status === 'bermasalah' && rec.approvalStatus === 'approved') {
+                attendedCount++;
+              }
+            }
+          });
+
+          const rate = (attendedCount / totalSessionsCount) * 100;
+          const rateFormatted = Math.round(rate * 10) / 10;
+
+          if (rateFormatted < attendanceThreshold) {
+            result.push({
+              studentId: student.id,
+              studentName: student.name,
+              studentEmail: student.email,
+              matricNo: student.matricNo,
+              classGroup: student.classGroup,
+              courseCode: course.code,
+              courseName: course.name,
+              attendedCount,
+              totalSessionsCount,
+              rate: rateFormatted
+            });
+          }
+        }
+      });
+    });
+
+    return result;
+  };
+
+  const handleSendWarningAlert = (item: any, channel: 'email' | 'in_app' | 'both') => {
+    const alertKey = `${item.studentId}-${item.courseCode}`;
+    setSendingAlertKey(alertKey);
+
+    // Format template message
+    const formattedMessage = warningMessageTemplate
+      .replace(/{student_name}/g, item.studentName)
+      .replace(/{course_name}/g, item.courseName)
+      .replace(/{course_code}/g, item.courseCode)
+      .replace(/{attendance_rate}/g, item.rate.toString())
+      .replace(/{threshold}/g, attendanceThreshold.toString());
+
+    setTimeout(() => {
+      const newAlert = {
+        id: `alert-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        studentId: item.studentId,
+        studentName: item.studentName,
+        studentEmail: item.studentEmail,
+        courseCode: item.courseCode,
+        courseName: item.courseName,
+        attendanceRate: item.rate,
+        threshold: attendanceThreshold,
+        timestamp: new Date().toISOString(),
+        type: channel,
+        message: formattedMessage,
+        status: 'sent' as const
+      };
+
+      setAlerts([newAlert, ...alerts]);
+      setSendingAlertKey(null);
+      
+      if (channel === 'email') {
+        toast.success(`Emel amaran dihantar ke ${item.studentEmail}!`);
+      } else if (channel === 'in_app') {
+        toast.success(`Notifikasi sistem (in-app) dihantar ke portal ${item.studentName}!`);
+      } else {
+        toast.success(`Amaran berjaya dipancarkan menerusi Emel & In-App kepada ${item.studentName}!`);
+      }
+    }, 800);
+  };
+
+  const handleSendBulkWarnings = () => {
+    const targets = getStudentsBelowThreshold();
+    if (targets.length === 0) {
+      toast.info('Tiada pelajar yang berada di bawah peratus ambang buat masa ini.');
+      return;
+    }
+
+    setIsSendingBulk(true);
+    
+    setTimeout(() => {
+      const newAlertsList: any[] = [];
+      targets.forEach(item => {
+        const formattedMessage = warningMessageTemplate
+          .replace(/{student_name}/g, item.studentName)
+          .replace(/{course_name}/g, item.courseName)
+          .replace(/{course_code}/g, item.courseCode)
+          .replace(/{attendance_rate}/g, item.rate.toString())
+          .replace(/{threshold}/g, attendanceThreshold.toString());
+
+        newAlertsList.push({
+          id: `alert-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+          studentId: item.studentId,
+          studentName: item.studentName,
+          studentEmail: item.studentEmail,
+          courseCode: item.courseCode,
+          courseName: item.courseName,
+          attendanceRate: item.rate,
+          threshold: attendanceThreshold,
+          timestamp: new Date().toISOString(),
+          type: 'both' as const,
+          message: formattedMessage,
+          status: 'sent' as const
+        });
+      });
+
+      setAlerts([...newAlertsList, ...alerts]);
+      setIsSendingBulk(false);
+      toast.success(`Autopilot Selesai: ${targets.length} amaran amaran pukal berjaya disebarkan menerusi Emel & In-App!`);
+    }, 1500);
+  };
+
   // Sort sessions: active first, then sorted alphabetically by course code, then chronologically by week/date.
   const sortedSessions = [...sessions].sort((a, b) => {
     if (a.status === 'active' && b.status !== 'active') return -1;
@@ -447,6 +626,7 @@ export default function LecturerDashboard() {
               <p className="text-sm font-semibold text-slate-800">{currentUser?.name}</p>
               <p className="text-xs text-blue-600 font-medium">{currentUser?.email}</p>
             </div>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img 
               src={currentUser?.avatar || 'https://i.pravatar.cc/150?u=user'} 
               alt="Avatar" 
@@ -468,7 +648,7 @@ export default function LecturerDashboard() {
       <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-8 w-full pb-24 lg:pb-8">
         
         {/* Desktop & Mobile Top Segmented Tab Control */}
-        <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between border-b border-slate-200/60 pb-5 mb-6 gap-4">
+        <div className="hidden lg:flex flex-col lg:flex-row items-stretch lg:items-center justify-between border-b border-slate-200/60 pb-5 mb-6 gap-4">
           <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-2xl border border-slate-200/30 overflow-x-auto scrollbar-none">
             <button
               type="button"
@@ -513,6 +693,17 @@ export default function LecturerDashboard() {
               }`}
             >
               <BookOpen className="w-4 h-4" /> Course Management
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('alerts')}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold tracking-tight transition-all cursor-pointer whitespace-nowrap ${
+                activeTab === 'alerts' 
+                  ? 'bg-white text-amber-600 shadow-xs' 
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <AlertTriangle className="w-4 h-4 text-amber-500" /> Amaran Kehadiran
             </button>
             <button
               type="button"
@@ -716,7 +907,18 @@ export default function LecturerDashboard() {
                           <span className="text-[9px] font-black bg-green-100 text-green-700 px-2 py-0.5 rounded-md">
                             {sess.courseCode}
                           </span>
-                          <span className="text-[10px] font-bold text-blue-600 bg-blue-50/50 px-2 py-0.5 rounded-md">Week {sess.week || 1}</span>
+                          <div className="flex items-center gap-1">
+                            {sess.deliveryMode === 'online' ? (
+                              <span className="text-[8px] font-black bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded flex items-center gap-0.5">
+                                <Globe className="w-2 h-2" /> ONLINE
+                              </span>
+                            ) : (
+                              <span className="text-[8px] font-black bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded flex items-center gap-0.5">
+                                <Users className="w-2 h-2" /> F2F
+                              </span>
+                            )}
+                            <span className="text-[10px] font-bold text-blue-600 bg-blue-50/50 px-2 py-0.5 rounded-md">Week {sess.week || 1}</span>
+                          </div>
                         </div>
                         <h5 className="font-bold text-slate-800 text-xs line-clamp-1">{sess.courseName}</h5>
                         <p className="text-[10px] text-slate-500 mt-1">
@@ -803,13 +1005,22 @@ export default function LecturerDashboard() {
                     >
                       <div>
                         <div className="flex justify-between items-start mb-3">
-                          <div className="flex gap-1.5">
+                          <div className="flex gap-1.5 flex-wrap">
                             <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md">
                               {sess.courseCode}
                             </span>
                             <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
                               {sess.classGroup}
                             </span>
+                            {sess.deliveryMode === 'online' ? (
+                              <span className="text-[9px] font-black bg-purple-100 text-purple-700 px-2 py-0.5 rounded-md flex items-center gap-1">
+                                <Globe className="w-2.5 h-2.5" /> ONLINE
+                              </span>
+                            ) : (
+                              <span className="text-[9px] font-black bg-amber-100 text-amber-700 px-2 py-0.5 rounded-md flex items-center gap-1">
+                                <Users className="w-2.5 h-2.5" /> F2F
+                              </span>
+                            )}
                           </div>
                           <span className={`text-xs font-bold flex items-center gap-1 ${
                             sess.status === 'active' ? 'text-green-600' : 'text-slate-400'
@@ -836,9 +1047,14 @@ export default function LecturerDashboard() {
 
                         {sess.latitude && sess.longitude ? (
                           <div className="bg-white/60 border border-slate-100 rounded-xl p-2.5 mb-4 text-[10px] text-slate-500 font-semibold space-y-1">
-                            <div className="flex items-center gap-1 text-blue-600">
-                              <MapPin className="w-3 h-3" />
-                              <span>Geofence Enabled ({sess.radius}m)</span>
+                            <div className="flex items-center gap-1 text-blue-600 justify-between">
+                              <div className="flex items-center gap-1">
+                                <MapPin className="w-3 h-3" />
+                                <span>Geofence Enabled ({sess.radius}m)</span>
+                              </div>
+                              {sess.deliveryMode === 'online' && (
+                                <span className="text-[8px] bg-purple-100 text-purple-700 px-1 rounded font-black">BYPASSED (ONLINE)</span>
+                              )}
                             </div>
                             <div className="flex justify-between text-slate-400 font-mono text-[9px]">
                               <span>LAT: {sess.latitude.toFixed(4)}</span>
@@ -957,7 +1173,7 @@ export default function LecturerDashboard() {
                     <option value="all">Semua Sesi (All Sessions)</option>
                     {sessions.map(s => (
                       <option key={s.id} value={s.id}>
-                        {s.courseCode} ({s.classGroup}) - {s.courseName} {s.week ? `[Wk ${s.week}]` : ''}
+                        {s.courseCode} ({s.classGroup}) - {s.courseName} {s.week ? `[Wk ${s.week}]` : ''} {s.deliveryMode === 'online' ? '(ONLINE)' : '(F2F)'}
                       </option>
                     ))}
                   </select>
@@ -979,8 +1195,8 @@ export default function LecturerDashboard() {
                 </div>
               </div>
 
-              {/* Table Container */}
-              <div className="border border-slate-100 rounded-2xl overflow-hidden flex-1">
+              {/* Desktop Table Layout */}
+              <div className="hidden md:block border border-slate-100 rounded-2xl overflow-hidden flex-1">
                 <div className="overflow-x-auto">
                   <table className="w-full text-left border-collapse">
                     <thead>
@@ -1107,36 +1323,135 @@ export default function LecturerDashboard() {
                   </table>
                 </div>
               </div>
+
+              {/* Mobile Card Layout */}
+              <div className="block md:hidden space-y-4">
+                {filteredRecords.length === 0 ? (
+                  <div className="text-center py-10 text-slate-400 border border-dashed border-slate-100 rounded-2xl bg-slate-50/50">
+                    No attendance records match the selected criteria.
+                  </div>
+                ) : (
+                  filteredRecords.map((rec) => {
+                    const sess = sessions.find(s => s.id === rec.sessionId);
+                    const isBermasalah = rec.status === 'bermasalah';
+                    return (
+                      <div key={rec.id} className="bg-white border border-slate-100 rounded-2xl p-4 space-y-3 shadow-sm hover:border-blue-200 transition-all flex flex-col">
+                        <div className="flex justify-between items-start gap-2">
+                          <div>
+                            <p className="font-extrabold text-slate-800 text-sm">{rec.studentName}</p>
+                            <p className="text-[10px] text-slate-400 font-mono font-bold mt-0.5">{rec.matricNo} • {rec.classGroup}</p>
+                          </div>
+                          <span className={`text-[9px] font-black inline-block px-2.5 py-1 rounded-full uppercase tracking-wider ${
+                            rec.status === 'present' 
+                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' 
+                              : rec.status === 'late'
+                              ? 'bg-yellow-50 text-yellow-700 border border-yellow-100'
+                              : rec.status === 'absent'
+                              ? 'bg-red-50 text-red-700 border border-red-100'
+                              : 'bg-amber-50 text-amber-700 border border-amber-200 animate-pulse'
+                          }`}>
+                            {rec.status.toUpperCase()}
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2 text-[10px] bg-slate-50/55 p-2.5 rounded-xl border border-slate-100/50">
+                          <div>
+                            <span className="text-slate-400 block font-bold text-[8px] uppercase mb-0.5">Subject</span>
+                            <span className="font-bold text-slate-700">{sess ? sess.courseCode : 'N/A'}</span>
+                          </div>
+                          <div>
+                            <span className="text-slate-400 block font-bold text-[8px] uppercase mb-0.5">Checked In</span>
+                            <span className="text-slate-600 font-bold">
+                              {new Date(rec.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between text-[10px] border-t border-slate-100 pt-2.5 mt-1">
+                          <div>
+                            {rec.latitude && rec.longitude ? (
+                              <span className={`font-extrabold flex items-center gap-1 ${
+                                rec.inGeofence ? 'text-green-600' : 'text-amber-600'
+                              }`}>
+                                <span className={`w-1.5 h-1.5 rounded-full ${rec.inGeofence ? 'bg-green-500' : 'bg-amber-500'}`}></span>
+                                {rec.inGeofence ? 'Verified Range' : `${Math.round(rec.distanceToCenter || 0)}m Out of Range`}
+                              </span>
+                            ) : (
+                              <span className="text-slate-400 italic">No GPS Data</span>
+                            )}
+                          </div>
+
+                          {/* Mobile Action Trigger */}
+                          {isBermasalah && (
+                            <div>
+                              {rec.approvalStatus === 'none' || !rec.approvalStatus ? (
+                                <span className="text-[10px] text-slate-400 font-bold italic">Awaiting MC</span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedRecordForReview(rec);
+                                    setLecturerNotes(rec.approvalNotes || '');
+                                  }}
+                                  className={`font-black text-[10px] py-1.5 px-3 rounded-xl transition-all cursor-pointer shadow-xs active:scale-95 ${
+                                    rec.approvalStatus === 'pending'
+                                      ? 'bg-blue-600 text-white hover:bg-blue-700'
+                                      : rec.approvalStatus === 'approved'
+                                      ? 'bg-green-50 text-green-700 border border-green-200'
+                                      : 'bg-red-50 text-red-700 border border-red-200'
+                                  }`}
+                                >
+                                  {rec.approvalStatus === 'pending' ? 'Review MC' : rec.approvalStatus === 'approved' ? '✓ Approved' : '✗ Rejected'}
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
             </div>
           </div>
 
           {/* COURSE MANAGEMENT TAB VIEW */}
           <div className={`space-y-6 ${activeTab === 'courses' ? 'block lg:col-span-3' : 'hidden'}`}>
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="w-full space-y-6">
               
-              {/* Left Side: Registered Courses list */}
-              <div className="lg:col-span-2 space-y-6">
+              {/* Registered Courses list */}
+              <div className="w-full space-y-6">
                 <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-sm">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
                     <div>
                       <h3 className="font-bold text-slate-800 text-lg">Registered Course List</h3>
                       <p className="text-xs text-slate-400">Standard 14-Week Politeknik Courses and Geofence coordinates</p>
                     </div>
-                    <span className="text-xs text-blue-600 bg-blue-50 border border-blue-100 px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5 self-start sm:self-auto">
-                      <BookOpen className="w-4 h-4" /> {courses.length} Active Courses
-                    </span>
+                    
+                    <div className="flex flex-wrap items-center gap-2.5 self-start sm:self-auto">
+                      <span className="text-xs text-blue-600 bg-blue-50 border border-blue-100 px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5">
+                        <BookOpen className="w-4 h-4" /> {courses.length} Active Courses
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setShowRegisterCourseModal(true)}
+                        className="bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-extrabold text-xs px-4 py-2 rounded-xl flex items-center gap-1.5 transition-all cursor-pointer shadow-md shadow-blue-100"
+                      >
+                        <Plus className="w-4 h-4" /> Register New Course
+                      </button>
+                    </div>
                   </div>
 
                   {courses.length === 0 ? (
                     <div className="text-center py-16 border-2 border-dashed border-slate-100 rounded-2xl">
                       <BookOpen className="w-16 h-16 mx-auto mb-3 opacity-20 text-slate-500" />
                       <p className="text-sm font-semibold text-slate-500">No Registered Courses</p>
-                      <p className="text-xs text-slate-400 mt-1 max-w-xs mx-auto">Use the registration form on the right to register course codes, contact hours, and geofencing coordinates.</p>
+                      <p className="text-xs text-slate-400 mt-1 max-w-xs mx-auto">Click &quot;Register New Course&quot; above to specify your course codes, contact hours, and geofencing coordinates.</p>
                     </div>
                   ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                       {courses.map((course) => (
-                        <div key={course.id} className="border border-slate-100 hover:border-blue-100 hover:shadow-xs rounded-2xl p-5 bg-slate-50/20 transition-all flex flex-col justify-between">
+                        <div key={course.id} className="border border-slate-100 hover:border-blue-100 hover:shadow-sm rounded-2xl p-5 bg-slate-50/20 transition-all flex flex-col justify-between">
                           <div>
                             <div className="flex items-center justify-between mb-3">
                               <span className="text-xs font-black bg-blue-50 text-blue-600 px-2.5 py-1 rounded-lg">
@@ -1183,6 +1498,18 @@ export default function LecturerDashboard() {
                             ) : (
                               <span className="text-[10px] text-amber-500 font-semibold">Geofencing Disabled</span>
                             )}
+                            
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedCourseForQR(course);
+                                setShowCourseQRModal(true);
+                              }}
+                              className="w-full mt-2 bg-blue-50 hover:bg-blue-100 text-blue-700 font-extrabold py-2 px-3 rounded-xl text-[10px] flex items-center justify-center gap-1.5 transition-all cursor-pointer border border-blue-200/40 shadow-3xs"
+                            >
+                              <QrCode className="w-3.5 h-3.5" />
+                              Papar Kod QR Kursus (Course QR)
+                            </button>
                           </div>
                         </div>
                       ))}
@@ -1191,145 +1518,285 @@ export default function LecturerDashboard() {
                 </div>
               </div>
 
-              {/* Right Side: Register New Course Form */}
-              <div className="lg:col-span-1 space-y-6">
-                <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-sm">
-                  <h3 className="font-bold text-slate-800 text-base mb-1">Register New Course</h3>
-                  <p className="text-xs text-slate-400 mb-4">Set curriculum specifications, location, and standard Politeknik contact hours.</p>
+            </div>
+          </div>
 
-                  <form onSubmit={handleRegisterCourse} className="space-y-4">
-                    <div>
-                      <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Course Code *</label>
+          {/* ==================== AUTOMATED ATTENDANCE ALERTS TAB VIEW ==================== */}
+          <div className={`space-y-6 lg:col-span-3 ${activeTab === 'alerts' ? 'block' : 'hidden'}`}>
+            <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-sm flex flex-col h-full animate-fade-in">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+                <div>
+                  <h3 className="font-bold text-slate-800 text-lg flex items-center gap-2">
+                    <AlertTriangle className="w-5 h-5 text-amber-500 animate-pulse" />
+                    Sistem Amaran & Notifikasi Kehadiran
+                  </h3>
+                  <p className="text-xs text-slate-400">Automate warnings & email alerts for students falling below minimum academic attendance thresholds</p>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={isSendingBulk}
+                  onClick={handleSendBulkWarnings}
+                  className="self-start md:self-auto bg-amber-600 hover:bg-amber-700 active:bg-amber-800 disabled:bg-amber-400 text-white font-bold py-2.5 px-4 rounded-xl flex items-center gap-1.5 text-xs shadow-md shadow-amber-100 transition-all cursor-pointer"
+                >
+                  {isSendingBulk ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      Memancar Amaran Pukal...
+                    </>
+                  ) : (
+                    <>
+                      <AlertTriangle className="w-4 h-4" />
+                      Autopilot: Amaran Pukal (Bulk Scan & Warn)
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {/* Threshold Adjuster and Message Template Config Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                {/* Threshold control card */}
+                <div className="bg-slate-50/60 border border-slate-100 p-5 rounded-2xl flex flex-col justify-between">
+                  <div>
+                    <label className="block text-xs font-extrabold text-slate-500 uppercase mb-2">Ambang Kehadiran Minimum</label>
+                    <div className="flex items-center gap-3">
                       <input
-                        type="text"
-                        required
-                        placeholder="e.g. DKM5012"
-                        value={regCode}
-                        onChange={(e) => setRegCode(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-sm text-slate-700 placeholder-slate-400 focus:bg-white focus:ring-2 focus:ring-blue-100 focus:border-blue-500 outline-none transition-all"
+                        type="range"
+                        min="50"
+                        max="100"
+                        value={attendanceThreshold}
+                        onChange={(e) => setAttendanceThreshold(parseInt(e.target.value))}
+                        className="w-full accent-blue-600 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer"
                       />
+                      <span className="text-sm font-black text-blue-600 bg-blue-50 border border-blue-100 px-2.5 py-1 rounded-xl whitespace-nowrap">
+                        {attendanceThreshold}%
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-slate-400 font-medium leading-relaxed mt-2.5">
+                      Standard Politeknik memerlukan minimum <strong>80.0%</strong> kehadiran kuliah bagi melayakkan menduduki peperiksaan akhir.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Message template card */}
+                <div className="bg-slate-50/60 border border-slate-100 p-5 rounded-2xl md:col-span-2 space-y-3">
+                  <div className="flex justify-between items-center">
+                    <label className="block text-xs font-extrabold text-slate-500 uppercase">Templat Mesej Amaran</label>
+                    <span className="text-[9px] text-blue-600 font-bold bg-white px-2 py-0.5 rounded-md border border-slate-100 font-sans">Pembolehubah Aktif</span>
+                  </div>
+                  <textarea
+                    value={warningMessageTemplate}
+                    onChange={(e) => setWarningMessageTemplate(e.target.value)}
+                    rows={2}
+                    className="w-full bg-white border border-slate-200 rounded-xl py-2 px-3 text-xs text-slate-700 focus:ring-2 focus:ring-blue-100 focus:border-blue-500 outline-none transition-all resize-none"
+                    placeholder="Mesej amaran..."
+                  />
+                  <div className="flex flex-wrap gap-1.5 text-[9px] font-bold text-slate-400 font-mono">
+                    <span className="bg-white border border-slate-150 px-1.5 py-0.5 rounded text-slate-600">{`{student_name}`}</span>
+                    <span className="bg-white border border-slate-150 px-1.5 py-0.5 rounded text-slate-600">{`{course_name}`}</span>
+                    <span className="bg-white border border-slate-150 px-1.5 py-0.5 rounded text-slate-600">{`{course_code}`}</span>
+                    <span className="bg-white border border-slate-150 px-1.5 py-0.5 rounded text-slate-600">{`{attendance_rate}`}</span>
+                    <span className="bg-white border border-slate-150 px-1.5 py-0.5 rounded text-slate-600">{`{threshold}`}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Scan Workspace and Historical Logs */}
+              <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
+                {/* Left side Workspace: Current under-threshold students */}
+                <div className="xl:col-span-2 space-y-6">
+                  <div className="border border-slate-100 rounded-2xl overflow-hidden bg-slate-50/10">
+                    <div className="bg-slate-50 px-4 py-3 border-b border-slate-100 flex justify-between items-center">
+                      <span className="text-xs font-bold text-slate-700 uppercase tracking-wide flex items-center gap-1.5">
+                        <Users className="w-4 h-4 text-slate-400" />
+                        Senarai Pelajar Di Bawah Ambang ({getStudentsBelowThreshold().length})
+                      </span>
+                      <span className="text-[10px] font-black text-amber-700 bg-amber-50 px-2.5 py-1 rounded-lg">
+                        Di Bawah {attendanceThreshold}%
+                      </span>
                     </div>
 
-                    <div>
-                      <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Course Name *</label>
-                      <input
-                        type="text"
-                        required
-                        placeholder="e.g. Thermodynamics II"
-                        value={regName}
-                        onChange={(e) => setRegName(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-sm text-slate-700 placeholder-slate-400 focus:bg-white focus:ring-2 focus:ring-blue-100 focus:border-blue-500 outline-none transition-all"
-                      />
+                    {/* Desktop Table Layout */}
+                    <div className="hidden md:block overflow-x-auto">
+                      <table className="w-full text-left border-collapse">
+                        <thead>
+                          <tr className="bg-slate-50/50 text-[10px] font-black text-slate-400 border-b border-slate-100 uppercase tracking-wider">
+                            <th className="py-2.5 px-4">Nama Pelajar</th>
+                            <th className="py-2.5 px-4">Kod & Kursus</th>
+                            <th className="py-2.5 px-4 text-center">Kuliah Hadir / Jumlah</th>
+                            <th className="py-2.5 px-4 text-center">Peratus</th>
+                            <th className="py-2.5 px-4 text-center">Tindakan Amaran</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 text-xs text-slate-600">
+                          {getStudentsBelowThreshold().length === 0 ? (
+                            <tr>
+                              <td colSpan={5} className="text-center py-12 text-slate-400 font-semibold italic">
+                                Sempurna! Tiada pelajar di bawah ambang {attendanceThreshold}% kehadiran setakat sesi yang selesai.
+                              </td>
+                            </tr>
+                          ) : (
+                            getStudentsBelowThreshold().map((item) => {
+                              const alertKey = `${item.studentId}-${item.courseCode}`;
+                              const isSendingThis = sendingAlertKey === alertKey;
+                              
+                              return (
+                                <tr key={`${item.studentId}-${item.courseCode}`} className="hover:bg-slate-50/50 transition-all">
+                                  <td className="py-3 px-4">
+                                    <p className="font-bold text-slate-800">{item.studentName}</p>
+                                    <p className="text-[10px] text-slate-400 font-mono mt-0.5">{item.matricNo} • {item.classGroup}</p>
+                                  </td>
+                                  <td className="py-3 px-4">
+                                    <span className="bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded font-black text-[9px] mr-1 font-mono">
+                                      {item.courseCode}
+                                    </span>
+                                    <span className="font-semibold text-slate-600">{item.courseName}</span>
+                                  </td>
+                                  <td className="py-3 px-4 text-center font-bold text-slate-700">
+                                    {item.attendedCount} / {item.totalSessionsCount} Sesi
+                                  </td>
+                                  <td className="py-3 px-4 text-center">
+                                    <span className="bg-rose-50 text-rose-700 border border-rose-100 font-black px-2 py-1 rounded-xl">
+                                      {item.rate}%
+                                    </span>
+                                  </td>
+                                  <td className="py-3 px-4 text-center">
+                                    <div className="flex items-center justify-center gap-1.5">
+                                      <button
+                                        type="button"
+                                        disabled={isSendingThis}
+                                        onClick={() => handleSendWarningAlert(item, 'both')}
+                                        className="bg-amber-600 hover:bg-amber-700 active:scale-95 disabled:bg-amber-400 text-white font-extrabold text-[10px] px-3 py-1.5 rounded-xl shadow-xs transition-all cursor-pointer flex items-center gap-1"
+                                      >
+                                        {isSendingThis ? (
+                                          <RefreshCw className="w-3 h-3 animate-spin" />
+                                        ) : (
+                                          <AlertTriangle className="w-3 h-3" />
+                                        )}
+                                        Hantar Amaran
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })
+                          )}
+                        </tbody>
+                      </table>
                     </div>
 
-                    <div>
-                      <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Classroom Location *</label>
-                      <input
-                        type="text"
-                        required
-                        placeholder="e.g. JKM Bilik Kuliah 1"
-                        value={regLocation}
-                        onChange={(e) => setRegLocation(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-sm text-slate-700 placeholder-slate-400 focus:bg-white focus:ring-2 focus:ring-blue-100 focus:border-blue-500 outline-none transition-all"
-                      />
-                    </div>
-
-                    {/* Geofencing Location GPS Config - Cleaned into a Modal trigger! */}
-                    <div className="border-t border-slate-100 pt-3">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-1">
-                          <Compass className="w-4 h-4 text-blue-600" />
-                          <span className="text-xs font-bold text-slate-700 uppercase">GPS Geofence Boundary</span>
+                    {/* Mobile Card Layout */}
+                    <div className="block md:hidden p-4 space-y-4">
+                      {getStudentsBelowThreshold().length === 0 ? (
+                        <div className="text-center py-10 text-slate-400 border border-dashed border-slate-100 rounded-2xl bg-slate-50/50 italic text-xs font-semibold">
+                          Sempurna! Tiada pelajar di bawah ambang {attendanceThreshold}% kehadiran setakat sesi yang selesai.
                         </div>
-                        <span className="bg-blue-50 text-blue-600 text-[9px] font-extrabold px-2 py-0.5 rounded-full uppercase border border-blue-100">
-                          {regRadius}m Radius
-                        </span>
-                      </div>
-
-                      <div className="bg-slate-50/50 border border-slate-100 rounded-2xl p-3.5 space-y-2.5">
-                        <div className="flex items-center justify-between">
-                          <div className="text-[11px] text-slate-600">
-                            <span className="text-slate-400 font-bold block uppercase text-[8px]">Current Boundary:</span>
-                            <span className="font-mono font-semibold text-slate-700">
-                              {parseFloat(regLat || '1.6033').toFixed(4)}, {parseFloat(regLng || '110.3547').toFixed(4)}
-                            </span>
-                          </div>
+                      ) : (
+                        getStudentsBelowThreshold().map((item) => {
+                          const alertKey = `${item.studentId}-${item.courseCode}`;
+                          const isSendingThis = sendingAlertKey === alertKey;
                           
-                          <button
-                            type="button"
-                            onClick={() => setShowCourseGpsModal(true)}
-                            className="bg-white hover:bg-blue-50 text-blue-600 border border-slate-200 hover:border-blue-150 py-1.5 px-3 rounded-xl text-[10px] font-bold shadow-2xs transition-all cursor-pointer hover:scale-105 active:scale-95 flex items-center gap-1"
-                          >
-                            📍 Configure GPS & Map
-                          </button>
-                        </div>
+                          return (
+                            <div key={`${item.studentId}-${item.courseCode}`} className="bg-white border border-slate-100 rounded-2xl p-4 space-y-3 shadow-xs">
+                              <div className="flex justify-between items-start gap-2">
+                                <div>
+                                  <p className="font-extrabold text-slate-800 text-sm">{item.studentName}</p>
+                                  <p className="text-[10px] text-slate-400 font-mono font-bold mt-0.5">{item.matricNo} • {item.classGroup}</p>
+                                </div>
+                                <span className="bg-rose-50 text-rose-700 border border-rose-100 font-black px-2 py-0.5 rounded-lg text-[10px]">
+                                  {item.rate}% Rate
+                                </span>
+                              </div>
+
+                              <div className="text-[10px] bg-slate-50 p-2.5 rounded-xl border border-slate-100/50 space-y-1 text-slate-600">
+                                <p><span className="font-bold text-slate-700">Course:</span> {item.courseCode} - {item.courseName}</p>
+                                <p><span className="font-bold text-slate-700">Sessions Attended:</span> <span className="font-bold text-slate-800">{item.attendedCount} / {item.totalSessionsCount}</span></p>
+                              </div>
+
+                              <div className="flex justify-end pt-1">
+                                <button
+                                  type="button"
+                                  disabled={isSendingThis}
+                                  onClick={() => handleSendWarningAlert(item, 'both')}
+                                  className="w-full bg-amber-600 hover:bg-amber-700 active:scale-95 disabled:bg-amber-400 text-white font-black text-xs py-2.5 px-4 rounded-xl shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                                >
+                                  {isSendingThis ? (
+                                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                  ) : (
+                                    <AlertTriangle className="w-3.5 h-3.5" />
+                                  )}
+                                  Hantar Surat Amaran
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right side Log History of sent warnings */}
+                <div className="xl:col-span-1 space-y-4">
+                  <div className="border border-slate-100 rounded-3xl p-5 bg-slate-50/40 space-y-4">
+                    <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+                      <div>
+                        <h4 className="font-bold text-slate-800 text-sm">Sejarah Amaran Dihantar</h4>
+                        <p className="text-[10px] text-slate-400">Log notifikasi rasmi pelajar</p>
                       </div>
+
+                      {alerts.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (confirm('Padam semua rekod log amaran?')) {
+                              setAlerts([]);
+                              toast.success('Log sejarah amaran berjaya dibersihkan.');
+                            }
+                          }}
+                          className="text-[10px] text-red-500 hover:text-red-700 hover:bg-red-50 font-bold px-2 py-1 rounded-lg transition-all cursor-pointer"
+                        >
+                          Clear Logs
+                        </button>
+                      )}
                     </div>
 
-                    {/* Start Date & Hours Calculator */}
-                    <div className="border-t border-slate-100 pt-4">
-                      <div className="flex items-center gap-1.5 mb-3">
-                        <Clock className="w-4.5 h-4.5 text-blue-600" />
-                        <span className="text-xs font-bold text-slate-700 uppercase">Syllabus & Hours Calculator</span>
-                      </div>
-
-                      <div className="space-y-4">
-                        <div>
-                          <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">First Class Start Date *</label>
-                          <input
-                            type="date"
-                            required
-                            value={regStartDate}
-                            onChange={(e) => setRegStartDate(e.target.value)}
-                            className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-sm text-slate-700 focus:bg-white focus:ring-2 focus:ring-blue-100 focus:border-blue-500 outline-none transition-all cursor-pointer"
-                          />
+                    <div className="space-y-3 max-h-[350px] overflow-y-auto pr-1">
+                      {alerts.length === 0 ? (
+                        <div className="text-center py-10 text-slate-400 text-xs italic">
+                          Tiada rekod amaran yang dihantar lagi hari ini.
                         </div>
-
-                        <div className="bg-blue-50/60 border border-blue-100/50 p-4 rounded-2xl space-y-3">
-                          <div className="grid grid-cols-2 gap-3">
-                            <div>
-                              <label className="block text-[10px] font-extrabold text-blue-700 uppercase mb-1.5">Total Contact Hours</label>
-                              <input
-                                type="number"
-                                required
-                                min="1"
-                                placeholder="e.g. 42"
-                                value={regTotalHours}
-                                onChange={(e) => handleTotalHoursChange(e.target.value)}
-                                className="w-full bg-white border border-blue-200/60 rounded-xl py-2 px-3 text-sm font-bold text-slate-800 outline-none focus:ring-2 focus:ring-blue-200 transition-all"
-                              />
+                      ) : (
+                        alerts.map((alert) => (
+                          <div key={alert.id} className="bg-white border border-slate-100 rounded-2xl p-3.5 space-y-2.5 shadow-2xs hover:shadow-xs transition-all">
+                            <div className="flex justify-between items-start gap-2">
+                              <div>
+                                <h5 className="font-bold text-slate-800 text-xs leading-tight">{alert.studentName}</h5>
+                                <p className="text-[10px] text-slate-400 mt-0.5">{alert.studentEmail}</p>
+                              </div>
+                              <span className="text-[9px] font-black bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded font-mono">
+                                {alert.courseCode}
+                              </span>
                             </div>
 
-                            <div>
-                              <label className="block text-[10px] font-extrabold text-blue-700 uppercase mb-1.5">Hours Per Week</label>
-                              <input
-                                type="number"
-                                required
-                                step="0.1"
-                                min="0.5"
-                                placeholder="e.g. 3"
-                                value={regHoursPerWeek}
-                                onChange={(e) => handleHoursPerWeekChange(e.target.value)}
-                                className="w-full bg-white border border-blue-200/60 rounded-xl py-2 px-3 text-sm font-bold text-slate-800 outline-none focus:ring-2 focus:ring-blue-200 transition-all"
-                              />
+                            <p className="text-[10px] text-slate-600 bg-amber-50/50 border border-amber-100/30 p-2 rounded-xl leading-relaxed font-medium">
+                              {alert.message}
+                            </p>
+
+                            <div className="flex items-center justify-between text-[9px] text-slate-400 font-semibold border-t border-slate-50 pt-2">
+                              <span className="flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
+                                Terhantar (Email & In-App)
+                              </span>
+                              <span>
+                                {new Date(alert.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </span>
                             </div>
                           </div>
-
-                          <div className="text-[10px] text-blue-600/80 font-semibold leading-relaxed flex items-start gap-1">
-                            <Info className="w-3.5 h-3.5 mt-0.5 shrink-0 text-blue-500" />
-                            <span>Calculated for a standard <strong>14-week</strong> Politeknik lecture semester. Setting either value will automatically solve the other.</span>
-                          </div>
-                        </div>
-                      </div>
+                        ))
+                      )}
                     </div>
-
-                    <button
-                      type="submit"
-                      className="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold py-3 rounded-xl text-xs shadow-md shadow-blue-100 flex items-center justify-center gap-2 transition-all cursor-pointer mt-4"
-                    >
-                      <Plus className="w-4 h-4" /> Register Course
-                    </button>
-                  </form>
+                  </div>
                 </div>
               </div>
 
@@ -1415,6 +1882,17 @@ export default function LecturerDashboard() {
         >
           <BookOpen className={`w-5 h-5 mb-1 transition-all ${activeTab === 'courses' ? 'text-blue-600 stroke-[2.5px]' : 'text-slate-400'}`} />
           <span className="text-[9px] tracking-tight">Courses</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('alerts')}
+          className={`flex flex-col items-center justify-center py-1 px-2 min-w-[56px] transition-all cursor-pointer ${
+            activeTab === 'alerts' ? 'text-amber-600 scale-105 font-bold' : 'text-slate-400 font-medium'
+          }`}
+        >
+          <AlertTriangle className={`w-5 h-5 mb-1 transition-all ${activeTab === 'alerts' ? 'text-amber-500 stroke-[2.5px]' : 'text-slate-400'}`} />
+          <span className="text-[9px] tracking-tight">Alerts</span>
         </button>
 
         <button
@@ -1627,6 +2105,40 @@ export default function LecturerDashboard() {
                   </div>
                 </div>
 
+                {/* Delivery Mode: Face to Face vs Online */}
+                <div className="bg-slate-50 border border-slate-100 p-3.5 rounded-2xl space-y-2">
+                  <label className="block text-[11px] font-extrabold text-slate-500 uppercase tracking-wider">
+                    Mod Kuliah / Delivery Mode *
+                  </label>
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => setDeliveryMode('f2f')}
+                      className={`flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl text-xs font-black transition-all cursor-pointer border ${
+                        deliveryMode === 'f2f'
+                          ? 'bg-blue-600 text-white border-blue-600 shadow-md shadow-blue-100'
+                          : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      <span className="text-sm">👥</span> F2F / Bersemuka
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDeliveryMode('online')}
+                      className={`flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl text-xs font-black transition-all cursor-pointer border ${
+                        deliveryMode === 'online'
+                          ? 'bg-blue-600 text-white border-blue-600 shadow-md shadow-blue-100'
+                          : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      <span className="text-sm">🌐</span> Online / Atas Talian
+                    </button>
+                  </div>
+                  <p className="text-[9px] text-slate-400 font-semibold leading-normal">
+                    * Jika memilih <strong className="text-blue-600">Online</strong>, pelajar dibenarkan mendaftar kehadiran dari mana-mana lokasi tanpa dianggap &quot;Kehadiran Bermasalah&quot; (Bypass Geofencing).
+                  </p>
+                </div>
+
                 {/* 14-Week Semester Generation Toggle */}
                 <div className="bg-blue-50/40 border border-blue-100/50 p-3.5 rounded-2xl flex items-start gap-2.5">
                   <input
@@ -1733,6 +2245,7 @@ export default function LecturerDashboard() {
                   <div className="border border-slate-200 rounded-2xl p-3 bg-slate-100/30 flex flex-col items-center gap-2">
                     {selectedRecordForReview.evidenceFile.startsWith('data:image/') ? (
                       <div className="relative w-full max-h-[160px] overflow-hidden rounded-xl border border-slate-200 flex justify-center items-center bg-white">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img 
                           src={selectedRecordForReview.evidenceFile} 
                           alt="Evidence document" 
@@ -1924,6 +2437,255 @@ export default function LecturerDashboard() {
                 Confirm & Save Location
               </button>
             </div>
+          </motion.div>
+        </div>
+      )}
+
+
+      {/* POPUP MODAL: Show Course QR Code */}
+      {showCourseQRModal && selectedCourseForQR && (
+        <div className="fixed inset-0 z-[50] flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-fade-in">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-3xl border border-slate-100 shadow-2xl w-full max-w-md overflow-hidden flex flex-col"
+          >
+            <div className="bg-slate-900 text-white p-5 flex justify-between items-center shrink-0">
+              <div>
+                <h4 className="font-bold text-sm">Kod QR Pendaftaran Kursus</h4>
+                <p className="text-[10px] text-slate-400">Scan this QR code using the student portal to enroll.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowCourseQRModal(false);
+                  setSelectedCourseForQR(null);
+                }}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/10 text-lg font-bold transition-all cursor-pointer"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="p-6 flex flex-col items-center text-center space-y-4">
+              <div className="bg-blue-50/50 text-blue-700 rounded-2xl p-3 w-full text-xs font-semibold">
+                Kursus: <span className="font-extrabold text-blue-900">{selectedCourseForQR.code} - {selectedCourseForQR.name}</span>
+              </div>
+
+              {/* Real dynamic QR Code generated via qrserver.com */}
+              <div className="bg-white p-4 rounded-2xl border-2 border-slate-100 shadow-xs relative flex items-center justify-center w-[230px] h-[230px]">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=enroll:${selectedCourseForQR.id}`}
+                  alt={`QR Code for ${selectedCourseForQR.code}`}
+                  className="w-[200px] h-[200px]"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <p className="text-xs font-bold text-slate-700">Imbas Untuk Mendaftar (Scan to Enroll)</p>
+                <p className="text-[10px] text-slate-400 max-w-xs leading-relaxed">
+                  Tunjukkan kod QR ini kepada pelajar di dalam bilik kuliah. Pelajar boleh menggunakan ciri <strong>Imbas QR</strong> pada portal pelajar untuk mendaftar masuk ke kursus ini secara automatik.
+                </p>
+              </div>
+
+              <div className="bg-slate-50 border border-slate-150 rounded-2xl p-3 w-full space-y-1 text-left text-[11px] text-slate-500">
+                <p className="flex justify-between font-medium">
+                  <span>Kod Kursus:</span>
+                  <strong className="text-slate-700">{selectedCourseForQR.code}</strong>
+                </p>
+                <p className="flex justify-between font-medium">
+                  <span>Lokasi Rasmi:</span>
+                  <strong className="text-slate-700">{selectedCourseForQR.location}</strong>
+                </p>
+                <p className="flex justify-between font-medium">
+                  <span>Silibus Kuliah:</span>
+                  <strong className="text-slate-700">{selectedCourseForQR.totalContactHours} Jam (14 Minggu)</strong>
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setShowCourseQRModal(false);
+                  setSelectedCourseForQR(null);
+                }}
+                className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-2.5 rounded-xl text-xs transition-all cursor-pointer shadow-xs"
+              >
+                Tutup (Close)
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+
+      {/* POPUP MODAL: Register Course Form Dialog */}
+      {showRegisterCourseModal && (
+        <div className="fixed inset-0 z-[50] flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-fade-in">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-3xl border border-slate-100 shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]"
+          >
+            <div className="bg-slate-900 text-white p-5 flex justify-between items-center shrink-0">
+              <div>
+                <h4 className="font-bold text-sm">Register New Course</h4>
+                <p className="text-[10px] text-slate-400">Set curriculum specifications, location, and standard Politeknik contact hours.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowRegisterCourseModal(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/10 text-lg font-bold transition-all cursor-pointer"
+              >
+                ×
+              </button>
+            </div>
+
+            <form onSubmit={handleRegisterCourse} className="flex flex-col min-h-0">
+              <div className="p-6 space-y-4 overflow-y-auto max-h-[calc(90vh-140px)]">
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Course Code *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. DKM5012"
+                    value={regCode}
+                    onChange={(e) => setRegCode(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-sm text-slate-700 placeholder-slate-400 focus:bg-white focus:ring-2 focus:ring-blue-100 focus:border-blue-500 outline-none transition-all"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Course Name *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Thermodynamics II"
+                    value={regName}
+                    onChange={(e) => setRegName(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-sm text-slate-700 placeholder-slate-400 focus:bg-white focus:ring-2 focus:ring-blue-100 focus:border-blue-500 outline-none transition-all"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Classroom Location *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. JKM Bilik Kuliah 1"
+                    value={regLocation}
+                    onChange={(e) => setRegLocation(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-sm text-slate-700 placeholder-slate-400 focus:bg-white focus:ring-2 focus:ring-blue-100 focus:border-blue-500 outline-none transition-all"
+                  />
+                </div>
+
+                {/* Geofencing Location GPS Config */}
+                <div className="border-t border-slate-100 pt-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-1">
+                      <Compass className="w-4 h-4 text-blue-600" />
+                      <span className="text-xs font-bold text-slate-700 uppercase">GPS Geofence Boundary</span>
+                    </div>
+                    <span className="bg-blue-50 text-blue-600 text-[9px] font-extrabold px-2 py-0.5 rounded-full uppercase border border-blue-100">
+                      {regRadius}m Radius
+                    </span>
+                  </div>
+
+                  <div className="bg-slate-50/50 border border-slate-100 rounded-2xl p-3.5 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <div className="text-[11px] text-slate-600">
+                        <span className="text-slate-400 font-bold block uppercase text-[8px]">Current Boundary:</span>
+                        <span className="font-mono font-semibold text-slate-700">
+                          {parseFloat(regLat || '1.6033').toFixed(4)}, {parseFloat(regLng || '110.3547').toFixed(4)}
+                        </span>
+                      </div>
+                      
+                      <button
+                        type="button"
+                        onClick={() => setShowCourseGpsModal(true)}
+                        className="bg-white hover:bg-blue-50 text-blue-600 border border-slate-200 hover:border-blue-150 py-1.5 px-3 rounded-xl text-[10px] font-bold shadow-2xs transition-all cursor-pointer hover:scale-105 active:scale-95 flex items-center gap-1"
+                      >
+                        📍 Configure GPS & Map
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Start Date & Hours Calculator */}
+                <div className="border-t border-slate-100 pt-4">
+                  <div className="flex items-center gap-1.5 mb-3">
+                    <Clock className="w-4.5 h-4.5 text-blue-600" />
+                    <span className="text-xs font-bold text-slate-700 uppercase">Syllabus & Hours Calculator</span>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">First Class Start Date *</label>
+                      <input
+                        type="date"
+                        required
+                        value={regStartDate}
+                        onChange={(e) => setRegStartDate(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-sm text-slate-700 focus:bg-white focus:ring-2 focus:ring-blue-100 focus:border-blue-500 outline-none transition-all cursor-pointer"
+                      />
+                    </div>
+
+                    <div className="bg-blue-50/60 border border-blue-100/50 p-4 rounded-2xl space-y-3">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-[10px] font-extrabold text-blue-700 uppercase mb-1.5">Total Contact Hours</label>
+                          <input
+                            type="number"
+                            required
+                            min="1"
+                            placeholder="e.g. 42"
+                            value={regTotalHours}
+                            onChange={(e) => handleTotalHoursChange(e.target.value)}
+                            className="w-full bg-white border border-blue-200/60 rounded-xl py-2 px-3 text-sm font-bold text-slate-800 outline-none focus:ring-2 focus:ring-blue-200 transition-all"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] font-extrabold text-blue-700 uppercase mb-1.5">Hours Per Week</label>
+                          <input
+                            type="number"
+                            required
+                            step="0.1"
+                            min="0.5"
+                            placeholder="e.g. 3"
+                            value={regHoursPerWeek}
+                            onChange={(e) => handleHoursPerWeekChange(e.target.value)}
+                            className="w-full bg-white border border-blue-200/60 rounded-xl py-2 px-3 text-sm font-bold text-slate-800 outline-none focus:ring-2 focus:ring-blue-200 transition-all"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="text-[10px] text-blue-600/80 font-semibold leading-relaxed flex items-start gap-1">
+                        <Info className="w-3.5 h-3.5 mt-0.5 shrink-0 text-blue-500" />
+                        <span>Calculated for a standard <strong>14-week</strong> Politeknik lecture semester. Setting either value will automatically solve the other.</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-5 border-t border-slate-100 bg-slate-50 flex gap-3 shrink-0 rounded-b-3xl">
+                <button
+                  type="button"
+                  onClick={() => setShowRegisterCourseModal(false)}
+                  className="flex-1 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 font-bold py-2.5 rounded-xl text-xs transition-all cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-xl text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  <Plus className="w-4 h-4" /> Register Course
+                </button>
+              </div>
+            </form>
           </motion.div>
         </div>
       )}

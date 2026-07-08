@@ -34,7 +34,8 @@ export default function LoginScreen() {
         avatar: 'https://i.pravatar.cc/150?u=student',
         role: 'student',
         matricNo: '20DKM21F1012',
-        classGroup: 'DKM1C'
+        classGroup: 'DKM1C',
+        enrolledCourses: ['course-1']
       });
       toast.success('Logged in as Student (Demo)');
     }
@@ -110,7 +111,8 @@ export default function LoginScreen() {
               avatar: user.photoURL || `https://i.pravatar.cc/150?u=${user.uid}`,
               role: role,
               matricNo: role === 'student' ? '20DKM21F1012' : '', // Default mock matric for demonstration
-              classGroup: role === 'student' ? 'DKM1C' : ''
+              classGroup: role === 'student' ? 'DKM1C' : '',
+              enrolledCourses: role === 'student' ? ['course-1'] : []
             };
             setCurrentUser(defaultUser);
           }
