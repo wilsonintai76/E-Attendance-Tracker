@@ -11,6 +11,7 @@ import { toast } from 'sonner';
 import * as api from '../lib/api';
 import { POLIKU_PRESETS, getCurrentCoordinates } from '../lib/geoUtils';
 import PolikuMap from './PolikuMap';
+import CourseSessionCard from './CourseSessionCard';
 import VersionDisplay from './VersionDisplay';
 
 export default function LecturerDashboard() {
@@ -1095,168 +1096,34 @@ export default function LecturerDashboard() {
             </div>
           </div>
 
-          {/* ==================== CLASS SESSIONS LIST (DEDICATED VIEW) ==================== */}
-          <div className={`space-y-6 lg:col-span-3 ${activeTab === 'sessions' ? 'block' : 'hidden'}`}>
-            <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-sm">
-              <div className="flex items-center justify-between mb-6">
-                <div>
-                  <h3 className="font-bold text-slate-800 text-lg">Class Sessions</h3>
-                  <p className="text-xs text-slate-400">Generate, schedule, or activate weekly 14-week semester sessions</p>
-                </div>
-                <button
-                  onClick={() => {
-                    setCourseCode('');
-                    setCourseName('');
-                    setClassGroup('');
-                    setSessionCode(Math.floor(1000 + Math.random() * 9000).toString());
-                    setSelectedCourseId('');
-                    setOverrideGeofencing(false);
-                    setUseGeofencing(true);
-                    setLatitude('1.6033');
-                    setLongitude('110.3547');
-                    setRadius(50);
-                    setSessionDate(new Date().toISOString().split('T')[0]);
-                    setSessionWeek('1');
-                    setSessionHours('2');
-                    setShowCreateModal(true);
+          {/* ==================== COURSE-CENTRIC SESSIONS VIEW ==================== */}
+          <div className={`space-y-4 lg:col-span-3 ${activeTab === 'sessions' ? 'block' : 'hidden'}`}>
+            {courses.length === 0 ? (
+              <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-sm text-center py-16">
+                <BookOpen className="w-12 h-12 mx-auto mb-3 opacity-30 text-slate-500" />
+                <p className="text-sm font-medium text-slate-400">Register a course first in Course Management.</p>
+              </div>
+            ) : (
+              courses.map((course) => (
+                <CourseSessionCard
+                  key={course.id}
+                  course={course}
+                  sessions={sortedSessions.filter(s =>
+                    (s.courseCode || '').toLowerCase() === (course.code || '').toLowerCase()
+                  )}
+                  onSessionsChange={(newSessions) => {
+                    const other = sortedSessions.filter(s =>
+                      (s.courseCode || '').toLowerCase() !== (course.code || '').toLowerCase()
+                    );
+                    setSessions([...newSessions, ...other]);
                   }}
-                  className="bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold py-2 px-3.5 rounded-xl flex items-center gap-1.5 text-xs shadow-md shadow-blue-100 transition-all cursor-pointer hover:scale-105"
-                >
-                  <Plus className="w-4 h-4" /> Create Live Session
-                </button>
-              </div>
-
-              {/* Session cards list */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {sortedSessions.length === 0 ? (
-                  <div className="col-span-full text-center py-16 border border-dashed border-slate-100 rounded-3xl text-slate-400">
-                    <BookOpen className="w-12 h-12 mx-auto mb-3 opacity-30 text-slate-500" />
-                    <p className="text-sm font-medium">No sessions scheduled.</p>
-                  </div>
-                ) : (
-                  sortedSessions.map((sess) => (
-                    <div 
-                      key={sess.id}
-                      className={`border rounded-2xl p-5 transition-all flex flex-col justify-between ${
-                        sess.status === 'active' 
-                          ? 'bg-blue-50/40 border-blue-100 shadow-xs' 
-                          : 'bg-white border-slate-100 hover:shadow-2xs'
-                      }`}
-                    >
-                      <div>
-                        <div className="flex justify-between items-start mb-3">
-                          <div className="flex gap-1.5 flex-wrap">
-                            <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md">
-                              {sess.courseCode}
-                            </span>
-                            <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
-                              {sess.classGroup}
-                            </span>
-                            {sess.deliveryMode === 'online' ? (
-                              <span className="text-[9px] font-black bg-purple-100 text-purple-700 px-2 py-0.5 rounded-md flex items-center gap-1">
-                                <Globe className="w-2.5 h-2.5" /> ONLINE
-                              </span>
-                            ) : (
-                              <span className="text-[9px] font-black bg-amber-100 text-amber-700 px-2 py-0.5 rounded-md flex items-center gap-1">
-                                <Users className="w-2.5 h-2.5" /> F2F
-                              </span>
-                            )}
-                          </div>
-                          <span className={`text-xs font-bold flex items-center gap-1 ${
-                            sess.status === 'active' ? 'text-green-600' : 'text-slate-400'
-                          }`}>
-                            <span className={`w-1.5 h-1.5 rounded-full ${sess.status === 'active' ? 'bg-green-500 animate-pulse' : 'bg-slate-300'}`}></span>
-                            {sess.status === 'active' ? 'LIVE' : 'CLOSED'}
-                          </span>
-                        </div>
-
-                        <h4 className="font-bold text-slate-800 text-sm mb-3 leading-snug">{sess.courseName}</h4>
-
-                        <div className="flex justify-between items-center text-[10px] text-slate-600 font-bold mb-3.5 bg-slate-50/80 px-2.5 py-1.5 rounded-lg border border-slate-100/50">
-                          <span className="text-blue-600 font-extrabold">Week {sess.week || 1}</span>
-                          <span className="text-slate-300">|</span>
-                          <span>{sess.hours || 2} Hour{sess.hours && sess.hours > 1 ? 's' : ''} Lecture</span>
-                          <span className="text-slate-300">|</span>
-                          <span className="text-slate-500">{sess.date}</span>
-                        </div>
-
-                        <div className="flex justify-between items-center text-[11px] text-slate-400 font-medium mb-3">
-                          <span className="flex items-center gap-1"><Clock className="w-3.5 h-3.5" /> Started: {sess.startTime}</span>
-                          <span className="flex items-center gap-1"><Users className="w-3.5 h-3.5" /> Students: {sess.studentCount}</span>
-                        </div>
-
-                        {sess.latitude && sess.longitude ? (
-                          <div className="bg-white/60 border border-slate-100 rounded-xl p-2.5 mb-4 text-[10px] text-slate-500 font-semibold space-y-1">
-                            <div className="flex items-center gap-1 text-blue-600 justify-between">
-                              <div className="flex items-center gap-1">
-                                <MapPin className="w-3 h-3" />
-                                <span>Geofence Enabled ({sess.radius}m)</span>
-                              </div>
-                              {sess.deliveryMode === 'online' && (
-                                <span className="text-[8px] bg-purple-100 text-purple-700 px-1 rounded font-black">BYPASSED (ONLINE)</span>
-                              )}
-                            </div>
-                            <div className="flex justify-between text-slate-400 font-mono text-[9px]">
-                              <span>LAT: {sess.latitude.toFixed(4)}</span>
-                              <span>LNG: {sess.longitude.toFixed(4)}</span>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="bg-slate-100/50 border border-slate-200/40 rounded-xl p-2.5 mb-4 text-[10px] text-slate-400 font-semibold flex items-center gap-1">
-                            <AlertTriangle className="w-3 h-3 text-amber-500" />
-                            <span>No Geofence Restriction</span>
-                          </div>
-                        )}
-                      </div>
-
-                      {sess.status === 'active' ? (
-                        <div className="bg-white border border-blue-100 rounded-xl p-3 flex justify-between items-center mb-1">
-                          <div>
-                            <p className="text-[9px] text-green-600 font-bold uppercase tracking-wider">Session Status</p>
-                            <p className="text-xs font-bold text-slate-800">Check-In Open ({sess.code})</p>
-                          </div>
-                          <button
-                            onClick={() => handleCloseSession(sess.id)}
-                            className="bg-red-600 hover:bg-red-700 active:bg-red-800 text-white font-semibold text-[11px] py-1.5 px-3 rounded-lg transition-all cursor-pointer shadow-sm hover:scale-105"
-                          >
-                            Close
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="space-y-2">
-                          <div className="bg-slate-50 border border-slate-200/50 rounded-xl p-3 flex justify-between items-center">
-                            <div>
-                              <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Session Status</p>
-                              <p className="text-xs font-semibold text-slate-500">Closed / Completed</p>
-                            </div>
-                            <button
-                              onClick={() => handleOpenSession(sess.id)}
-                              className="bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold text-[11px] py-1.5 px-3 rounded-lg transition-all cursor-pointer shadow-sm hover:scale-105"
-                            >
-                              Reopen
-                            </button>
-                          </div>
-                          <div className="flex gap-1.5">
-                            <button
-                              onClick={() => handleEditSession(sess)}
-                              className="flex-1 bg-white border border-slate-200 hover:border-blue-300 text-slate-600 hover:text-blue-600 font-semibold text-[10px] py-1.5 rounded-lg transition-all cursor-pointer"
-                            >
-                              ✏️ Edit Date
-                            </button>
-                            <button
-                              onClick={() => handleOpenBulkAttendance(sess)}
-                              className="flex-1 bg-amber-50 border border-amber-200 hover:bg-amber-100 text-amber-700 font-semibold text-[10px] py-1.5 rounded-lg transition-all cursor-pointer"
-                            >
-                              ✅ Mark Attendance
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
+                  onEditSession={handleEditSession}
+                  onBulkAttendance={handleOpenBulkAttendance}
+                  onCloseSession={handleCloseSession}
+                  onOpenSession={handleOpenSession}
+                />
+              ))
+            )}
           </div>
 
           {/* Right Side: Attendance Log & Filters */}
