@@ -176,10 +176,27 @@ sessions.post('/:id/checkin', requirePolicy('canCheckIn'), async (c) => {
 // PUT /api/sessions/:id — update session (date, etc.)
 sessions.put('/:id', requirePolicy('canManageSessions'), async (c) => {
   const id = c.req.param('id');
-  const body = await c.req.json<{ date?: string; }>();
+  const body = await c.req.json<{ date?: string; week?: number; status?: 'active' | 'inactive' }>();
 
-  if (body.date) {
-    await c.env.DB.prepare('UPDATE attendance_sessions SET date = ? WHERE id = ?').bind(body.date, id).run();
+  const updates: string[] = [];
+  const values: any[] = [];
+  if (body.date !== undefined) {
+    updates.push('date = ?');
+    values.push(body.date);
+  }
+  if (body.week !== undefined) {
+    updates.push('week = ?');
+    values.push(body.week);
+  }
+  if (body.status !== undefined) {
+    updates.push('status = ?');
+    values.push(body.status);
+  }
+
+  if (updates.length > 0) {
+    values.push(id);
+    const query = `UPDATE attendance_sessions SET ${updates.join(', ')} WHERE id = ?`;
+    await c.env.DB.prepare(query).bind(...values).run();
   }
 
   const session = await c.env.DB.prepare(

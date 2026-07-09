@@ -237,7 +237,7 @@ export async function checkInSession(sessionId: string, checkIn: {
   return normalizeObject<AttendanceRecord>(data.record);
 }
 
-export async function updateSession(sessionId: string, updates: { date?: string }) {
+export async function updateSession(sessionId: string, updates: { date?: string; week?: number; status?: 'active' | 'inactive' }) {
   const data = await apiFetch<{ session: Record<string, unknown> }>(`/sessions/${sessionId}`, {
     method: 'PUT', body: JSON.stringify(updates),
   });
