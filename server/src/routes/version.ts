@@ -11,7 +11,7 @@ version.get('/', (c) => {
     DEPLOYMENT_ID = crypto.randomUUID();
   }
   return c.json({
-    version: '0.2.0',
+    version: '0.3.0',
     deploymentId: DEPLOYMENT_ID,
   });
 });
