@@ -127,14 +127,14 @@ export default function CourseSessionCard({
                 {sess.status === 'active' ? (
                   <span className="bg-green-100 text-green-700 text-[9px] font-bold px-2 py-0.5 rounded-full">ACTIVE</span>
                 ) : (
-                  <span className="flex items-center gap-1">
-                    <span className="bg-slate-200 text-slate-500 text-[9px] font-bold px-2 py-0.5 rounded-full">INACTIVE</span>
-                    <button onClick={() => onEditSession(sess)}
-                      className="text-slate-400 hover:text-blue-500 px-1 py-0.5 rounded text-[10px] cursor-pointer" title="Edit date">✏️</button>
-                    <button onClick={() => onBulkAttendance(sess)}
-                      className="text-slate-400 hover:text-amber-500 px-1 py-0.5 rounded text-[10px] cursor-pointer" title="Attendance">✅</button>
-                  </span>
+                  <span className="bg-slate-200 text-slate-500 text-[9px] font-bold px-2 py-0.5 rounded-full">INACTIVE</span>
                 )}
+                <span className="flex items-center gap-1">
+                  <button onClick={() => onEditSession(sess)}
+                    className="text-slate-400 hover:text-blue-500 px-1 py-0.5 rounded text-[10px] cursor-pointer" title="Edit date">✏️</button>
+                  <button onClick={() => onBulkAttendance(sess)}
+                    className="text-slate-400 hover:text-amber-500 px-1 py-0.5 rounded text-[10px] cursor-pointer" title="Attendance">✅</button>
+                </span>
               </div>
             </div>
           ))}
