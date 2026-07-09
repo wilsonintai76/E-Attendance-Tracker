@@ -5,8 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
-    "deploy:all": "node ../scripts/deploy.mjs",
+    "deploy": "node ../scripts/deploy.mjs",
     "db:init": "wrangler d1 execute e-attendance-db --file=./src/db/schema.sql",
     "db:local": "wrangler d1 execute e-attendance-db --local --file=./src/db/schema.sql",
     "types": "wrangler types"

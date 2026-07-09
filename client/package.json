@@ -7,7 +7,6 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "deploy:frontend": "vite build && wrangler pages deploy dist --project-name e-attendance --branch main --commit-dirty=true",
     "deploy": "node ../scripts/deploy.mjs"
   },
   "dependencies": {
