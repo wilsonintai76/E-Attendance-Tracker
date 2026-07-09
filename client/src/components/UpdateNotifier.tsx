@@ -3,6 +3,9 @@ import { useAppStore } from '../lib/store';
 
 const POLL_MS = 30_000;
 const KEY = 'e-attendance-deployment-id';
+const API_BASE = import.meta.env.PROD
+  ? 'https://e-attendance-api.wilson-b6f.workers.dev'
+  : '';
 
 export default function UpdateNotifier() {
   const { logout } = useAppStore();
@@ -11,7 +14,7 @@ export default function UpdateNotifier() {
   useEffect(() => {
     const check = async () => {
       try {
-        const res = await fetch('/api/version', { cache: 'no-store' });
+        const res = await fetch(`${API_BASE}/api/version`, { cache: 'no-store' });
         if (!res.ok) return;
         const { deploymentId } = await res.json() as { deploymentId: string };
         if (!lastId.current) { lastId.current = deploymentId; localStorage.setItem(KEY, deploymentId); return; }
