@@ -83,9 +83,9 @@ sessions.get('/active', async (c) => {
   const rows = await c.env.DB.prepare(
     `SELECT s.*, c.code AS course_code, c.name AS course_name
      FROM attendance_sessions s JOIN courses c ON s.course_id = c.id
-     WHERE s.status = 'active' AND s.class_group = ?
+     WHERE s.status = 'active' AND s.class_group = ? AND s.lecturer_id = ?
      ORDER BY s.created_at DESC`
-  ).bind(classGroup).all();
+  ).bind(classGroup, user.id).all();
   return c.json({ sessions: rows.results });
 });
 

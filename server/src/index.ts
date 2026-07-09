@@ -20,11 +20,25 @@ app.use('*', cors({
 // Health check
 app.get('/api/health', (c) => c.json({ status: 'ok', timestamp: new Date().toISOString() }));
 
-// Storage upload endpoint (R2)
+// Storage upload endpoint (R2) — auth required, students can only upload to evidence/ keys
 app.put('/api/storage/upload/:key', async (c) => {
-  const key = decodeURIComponent(c.req.param('key'));
-  const body = await c.req.arrayBuffer();
+  // Verify JWT
+  const authHeader = c.req.header('Authorization');
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return c.json({ error: 'Unauthorized' }, 401);
+  }
+  const { verifyToken } = await import('./middleware/auth');
+  const user = await verifyToken(c, authHeader.slice(7));
+  if (!user) return c.json({ error: 'Invalid or expired token' }, 401);
 
+  const key = decodeURIComponent(c.req.param('key'));
+
+  // Students may only write to evidence/ namespace; lecturers are unrestricted
+  if (user.role === 'student' && !key.startsWith('evidence/')) {
+    return c.json({ error: 'Forbidden — students may only upload evidence files' }, 403);
+  }
+
+  const body = await c.req.arrayBuffer();
   await c.env.STORAGE.put(key, body, {
     httpMetadata: { contentType: c.req.header('Content-Type') || 'application/octet-stream' },
   });
@@ -32,8 +46,16 @@ app.put('/api/storage/upload/:key', async (c) => {
   return c.json({ success: true, key });
 });
 
-// Storage download endpoint (R2)
+// Storage download endpoint (R2) — auth required
 app.get('/api/storage/download/:key', async (c) => {
+  const authHeader = c.req.header('Authorization');
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return c.json({ error: 'Unauthorized' }, 401);
+  }
+  const { verifyToken } = await import('./middleware/auth');
+  const user = await verifyToken(c, authHeader.slice(7));
+  if (!user) return c.json({ error: 'Invalid or expired token' }, 401);
+
   const key = decodeURIComponent(c.req.param('key'));
   const object = await c.env.STORAGE.get(key);
 

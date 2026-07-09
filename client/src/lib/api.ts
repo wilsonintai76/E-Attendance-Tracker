@@ -149,14 +149,7 @@ export async function googleLogin(credential: string) {
   return normalizeObject<User>(data.user);
 }
 
-export async function login(email: string, name: string, role: Role, avatar?: string, matricNo?: string, classGroup?: string) {
-  const data = await apiFetch<{ token: string; user: Record<string, unknown> }>('/auth/login', {
-    method: 'POST',
-    body: JSON.stringify({ email, name, role, avatar, matricNo, classGroup }),
-  });
-  setToken(data.token);
-  return normalizeObject<User>(data.user);
-}
+// NOTE: /auth/login endpoint does not exist. Google Sign-In (googleLogin) is the only login path.
 
 export async function getMe() {
   const data = await apiFetch<{ user: Record<string, unknown> }>('/auth/me');
@@ -316,8 +309,18 @@ export async function uploadEvidence(recordId: string, file: File) {
     `/records/${recordId}/evidence`,
     { method: 'POST', body: JSON.stringify({ fileName: file.name, fileType: file.type }) },
   );
-  await fetch(data.uploadUrl, {
-    method: 'PUT', headers: { 'Content-Type': file.type }, body: file,
+  // uploadUrl is a relative path (/api/storage/upload/...). In production the API lives
+  // on a different origin, so we must resolve it against API_BASE for a correct absolute URL.
+  const absoluteUploadUrl = data.uploadUrl.startsWith('http')
+    ? data.uploadUrl
+    : `${API_BASE}${data.uploadUrl.replace(/^\/api/, '')}`;
+  await fetch(absoluteUploadUrl, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': file.type,
+      ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+    },
+    body: file,
   });
   return data;
 }

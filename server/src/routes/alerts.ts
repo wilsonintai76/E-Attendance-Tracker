@@ -71,20 +71,27 @@ alerts.post('/send-bulk', requirePolicy('canManageSessions'), async (c) => {
 
   const createdAlerts = [];
   for (const student of (enrollments.results || [])) {
-    // Calculate attendance rate for this student in this course
+    // Total sessions conducted for this course (active or inactive — both count)
     const totalSessions = await c.env.DB.prepare(
-      `SELECT COUNT(*) as count FROM attendance_sessions WHERE course_code = ? AND status = 'completed'`
+      `SELECT COUNT(*) as count FROM attendance_sessions s
+       INNER JOIN courses c ON s.course_id = c.id
+       WHERE c.code = ?`
     ).bind(body.courseCode).first<{ count: number }>();
 
+    // Sessions where this student was present
     const presentCount = await c.env.DB.prepare(
       `SELECT COUNT(*) as count FROM attendance_records ar
        INNER JOIN attendance_sessions s ON ar.session_id = s.id
-       WHERE s.course_code = ? AND ar.student_id = ? AND ar.status = 'present'`
+       INNER JOIN courses c ON s.course_id = c.id
+       WHERE c.code = ? AND ar.student_id = ? AND ar.status = 'present'`
     ).bind(body.courseCode, student.id).first<{ count: number }>();
 
     const total = totalSessions?.count || 0;
     const present = presentCount?.count || 0;
     const rate = total > 0 ? Math.round((present / total) * 1000) / 10 : 100;
+
+    // Only send alert if below threshold
+    if (rate >= body.threshold) continue;
 
     const message = body.messageTemplate
       .replace('{student_name}', student.name)

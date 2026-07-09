@@ -39,7 +39,6 @@ records.get('/', async (c) => {
      ORDER BY ar.created_at DESC`
   ).bind(user.id).all();
   return c.json({ records: rows.results });
-  return c.json({ records: rows.results });
 });
 
 // GET /api/records/:id
