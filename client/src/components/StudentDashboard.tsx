@@ -238,9 +238,11 @@ export default function StudentDashboard() {
   const enrolledCourses = courses.filter(c => enrolledCourseIds.includes(c.id));
   const enrolledCourseCodes = enrolledCourses.map(c => c.code.toUpperCase());
 
-  // Find active live sessions and geofence state variables (filtered to enrolled courses)
+  // Find active live sessions (filtered to enrolled courses, exclude already checked-in)
   const activeSessions = sessions.filter(
-    s => s.status === 'active' && enrolledCourseCodes.includes((s.courseCode || '').toUpperCase())
+    s => s.status === 'active'
+      && enrolledCourseCodes.includes((s.courseCode || '').toUpperCase())
+      && !records.some(r => r.sessionId === s.id && r.studentId === currentUser?.id)
   );
   const targetSession = sessions.find(s => s.id === selectedSessionId);
   const isGeofenced = !!(targetSession?.latitude && targetSession?.longitude);
