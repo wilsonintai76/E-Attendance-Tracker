@@ -74,6 +74,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   }, [isLoggedIn, refreshData]);
 
+  // Periodic refresh to keep session statuses in sync (auto-transition on server)
+  // Runs every 3 minutes and also when tab becomes visible again
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    const interval = setInterval(refreshData, 3 * 60 * 1000);
+    const onVisible = () => { if (document.visibilityState === 'visible') refreshData(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [isLoggedIn, refreshData]);
+
   const setCurrentUser = (user: User | null) => {
     setCurrentUserState(user);
   };
