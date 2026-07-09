@@ -34,6 +34,7 @@ export default function LecturerDashboard() {
   const [regCode, setRegCode] = useState('');
   const [regName, setRegName] = useState('');
   const [regLocation, setRegLocation] = useState('');
+  const [regClassGroup, setRegClassGroup] = useState('');
   const [regLat, setRegLat] = useState('1.6033');
   const [regLng, setRegLng] = useState('110.3547');
   const [regRadius, setRegRadius] = useState(50);
@@ -189,6 +190,7 @@ export default function LecturerDashboard() {
       code: regCode.toUpperCase().trim(),
       name: regName.trim(),
       location: regLocation.trim(),
+      classGroup: regClassGroup.toUpperCase().trim(),
       latitude: regLat ? parseFloat(regLat) : undefined,
       longitude: regLng ? parseFloat(regLng) : undefined,
       radius: regRadius,
@@ -227,6 +229,7 @@ export default function LecturerDashboard() {
     setRegCode(course.code);
     setRegName(course.name);
     setRegLocation(course.location);
+    setRegClassGroup(course.classGroup || '');
     setRegLat(course.latitude ? course.latitude.toString() : '1.6033');
     setRegLng(course.longitude ? course.longitude.toString() : '110.3547');
     setRegRadius(course.radius || 50);
@@ -243,6 +246,7 @@ export default function LecturerDashboard() {
     setRegCode('');
     setRegName('');
     setRegLocation('');
+    setRegClassGroup('');
     setRegSelectedPreset('');
     setRegTotalHours('42');
     setRegHoursPerWeek('3');
@@ -2025,6 +2029,7 @@ export default function LecturerDashboard() {
                         if (selectedCourse) {
                           setCourseCode(selectedCourse.code);
                           setCourseName(selectedCourse.name);
+                          setClassGroup(selectedCourse.classGroup || '');
                           if (selectedCourse.latitude && selectedCourse.longitude) {
                             setUseGeofencing(true);
                             setLatitude(selectedCourse.latitude.toString());
@@ -2735,6 +2740,20 @@ export default function LecturerDashboard() {
                     placeholder="e.g. JKM Bilik Kuliah 1"
                     value={regLocation}
                     onChange={(e) => setRegLocation(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-sm text-slate-700 placeholder-slate-400 focus:bg-white focus:ring-2 focus:ring-blue-100 focus:border-blue-500 outline-none transition-all"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="regClassGroup" className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Class / Group *</label>
+                  <input
+                    id="regClassGroup"
+                    name="regClassGroup"
+                    type="text"
+                    required
+                    placeholder="e.g. DKM5A"
+                    value={regClassGroup}
+                    onChange={(e) => setRegClassGroup(e.target.value)}
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-sm text-slate-700 placeholder-slate-400 focus:bg-white focus:ring-2 focus:ring-blue-100 focus:border-blue-500 outline-none transition-all"
                   />
                 </div>

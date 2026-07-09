@@ -42,6 +42,7 @@ export interface Course {
   code: string;
   name: string;
   location: string;
+  classGroup?: string;
   latitude?: number;
   longitude?: number;
   radius?: number;

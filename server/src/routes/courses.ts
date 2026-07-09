@@ -45,16 +45,16 @@ courses.get('/:id', async (c) => {
 courses.post('/', requirePolicy('canCreateCourses'), async (c) => {
   const user = c.get('user')!;
   const body = await c.req.json<{
-    code: string; name: string; location?: string;
+    code: string; name: string; location?: string; classGroup?: string;
     latitude?: number; longitude?: number; radius?: number;
     startDate: string; totalContactHours: number; hoursPerWeek: number;
   }>();
 
   const id = crypto.randomUUID();
   await c.env.DB.prepare(
-    `INSERT INTO courses (id, code, name, location, latitude, longitude, radius, start_date, total_contact_hours, hours_per_week, lecturer_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).bind(id, body.code, body.name, body.location || '', body.latitude || null, body.longitude || null,
+    `INSERT INTO courses (id, code, name, location, class_group, latitude, longitude, radius, start_date, total_contact_hours, hours_per_week, lecturer_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).bind(id, body.code, body.name, body.location || '', body.classGroup || '', body.latitude || null, body.longitude || null,
     body.radius || 50, body.startDate, body.totalContactHours, body.hoursPerWeek, user.id).run();
 
   const course = await c.env.DB.prepare('SELECT * FROM courses WHERE id = ?').bind(id).first();
@@ -65,7 +65,7 @@ courses.post('/', requirePolicy('canCreateCourses'), async (c) => {
 courses.put('/:id', requirePolicy('canCreateCourses'), async (c) => {
   const id = c.req.param('id');
   const body = await c.req.json<{
-    code?: string; name?: string; location?: string;
+    code?: string; name?: string; location?: string; classGroup?: string;
     latitude?: number; longitude?: number; radius?: number;
     startDate?: string; totalContactHours?: number; hoursPerWeek?: number;
   }>();
@@ -75,12 +75,13 @@ courses.put('/:id', requirePolicy('canCreateCourses'), async (c) => {
 
   await c.env.DB.prepare(
     `UPDATE courses SET code = COALESCE(?, code), name = COALESCE(?, name),
-     location = COALESCE(?, location), latitude = COALESCE(?, latitude),
+     location = COALESCE(?, location), class_group = COALESCE(?, class_group),
+     latitude = COALESCE(?, latitude),
      longitude = COALESCE(?, longitude), radius = COALESCE(?, radius),
      start_date = COALESCE(?, start_date), total_contact_hours = COALESCE(?, total_contact_hours),
      hours_per_week = COALESCE(?, hours_per_week) WHERE id = ?`
-  ).bind(body.code || null, body.name || null, body.location || null, body.latitude ?? null,
-    body.longitude ?? null, body.radius ?? null, body.startDate || null,
+  ).bind(body.code || null, body.name || null, body.location || null, body.classGroup || null,
+    body.latitude ?? null, body.longitude ?? null, body.radius ?? null, body.startDate || null,
     body.totalContactHours ?? null, body.hoursPerWeek ?? null, id).run();
 
   const course = await c.env.DB.prepare('SELECT * FROM courses WHERE id = ?').bind(id).first();
