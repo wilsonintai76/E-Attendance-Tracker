@@ -6,6 +6,12 @@ const courses = new Hono<{ Bindings: Env }>();
 // All course routes require auth
 courses.use('*', authMiddleware);
 
+// GET /api/courses/all — all courses (for student browsing)
+courses.get('/all', async (c) => {
+  const rows = await c.env.DB.prepare('SELECT * FROM courses ORDER BY code').all();
+  return c.json({ courses: rows.results });
+});
+
 // GET /api/courses — list courses
 courses.get('/', async (c) => {
   const user = c.get('user')!;

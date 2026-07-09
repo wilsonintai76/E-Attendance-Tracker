@@ -171,6 +171,11 @@ export async function updateProfile(profile: { matricNo?: string; classGroup?: s
 }
 
 // ========== Courses API ==========
+export async function fetchAllCourses() {
+  const data = await apiFetch<{ courses: unknown[] }>('/courses/all');
+  return normalizeArray<Course>(data.courses);
+}
+
 export async function fetchCourses() {
   const data = await apiFetch<{ courses: unknown[] }>('/courses');
   return normalizeArray<Course>(data.courses);

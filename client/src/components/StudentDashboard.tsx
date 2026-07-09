@@ -91,6 +91,7 @@ export default function StudentDashboard() {
 
   // Course Enrollment & QR Scanner States
   const [showScannerModal, setShowScannerModal] = useState(false);
+  const [allCourses, setAllCourses] = useState<Course[]>([]);
   const [scannerMode, setScannerMode] = useState<'camera' | 'simulation' | 'manual'>('simulation');
   const [videoStream, setVideoStream] = useState<MediaStream | null>(null);
   const [cameraPermission, setCameraPermission] = useState<'prompt' | 'granted' | 'denied' | 'unsupported'>('prompt');
@@ -165,22 +166,25 @@ export default function StudentDashboard() {
     toast.success(`Berjaya mendaftar! Anda telah didaftarkan ke kursus ${courseToEnroll.code} - ${courseToEnroll.name}.`);
   };
 
-  const handleManualEnroll = (e: React.FormEvent) => {
+  const handleManualEnroll = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!manualCourseCode.trim()) return;
 
-    const matchedCourse = courses.find(
-      c => c.code.toLowerCase() === manualCourseCode.trim().toLowerCase()
-    );
-
-    if (!matchedCourse) {
+    try {
+      // Search via API — looks up by course code directly
+      const { course, alreadyEnrolled } = await api.scanQRCode(manualCourseCode.trim().toUpperCase());
+      if (alreadyEnrolled) {
+        toast.info('Anda sudah pun berdaftar untuk kursus ini!');
+        setManualCourseCode('');
+        setShowScannerModal(false);
+        return;
+      }
+      handleEnrollInCourse(course.id);
+      setManualCourseCode('');
+      setShowScannerModal(false);
+    } catch {
       toast.error('Kod kursus tidak sah. Sila pastikan anda memasukkan kod yang betul (Contoh: DJJ31022).');
-      return;
     }
-
-    handleEnrollInCourse(matchedCourse.id);
-    setManualCourseCode('');
-    setShowScannerModal(false);
   };
 
   const handleSimulatedScan = (course: Course) => {
@@ -1020,9 +1024,10 @@ export default function StudentDashboard() {
               <div className="pt-3 border-t border-slate-50">
                 <button
                   type="button"
-                  onClick={() => {
+                  onClick={async () => {
                     setScannerMode('simulation');
                     setShowScannerModal(true);
+                    try { setAllCourses(await api.fetchAllCourses()); } catch {}
                   }}
                   className="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-extrabold py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-md shadow-blue-100 transition-all cursor-pointer hover:shadow-lg hover:scale-101"
                 >
@@ -1895,248 +1900,51 @@ export default function StudentDashboard() {
       )}
 
 
-      {/* POPUP MODAL: Student Course Enrollment & QR Scanner */}
+
+      {/* MODAL: Daftar Kursus � available courses + manual code */}
       {showScannerModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="bg-white rounded-3xl border border-slate-100 shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh]"
-          >
-            {/* Modal Header */}
-            <div className="bg-slate-900 text-white p-5 flex justify-between items-center shrink-0">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-2xl shadow-xl w-full max-w-md flex flex-col max-h-85vh">
+            <div className="p-5 border-b border-slate-100 shrink-0 flex justify-between items-center">
               <div>
-                <h4 className="font-extrabold text-sm flex items-center gap-1.5">
-                  <QrCode className="w-4.5 h-4.5 text-blue-400" /> Daftar Kursus Baharu (Course Registration)
-                </h4>
-                <p className="text-[10px] text-slate-400">Scan course QR code or enter manual code to enroll</p>
+                <h4 className="font-bold text-slate-800 text-sm">Daftar Kursus</h4>
+                <p className="text-[10px] text-slate-400 mt-0.5">Pilih kursus atau masukkan kod manual</p>
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowScannerModal(false);
-                  setScannedCourse(null);
-                  setScanningSuccess(false);
-                  setIsScanning(false);
-                }}
-                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/10 text-lg font-bold transition-all cursor-pointer"
-              >
-                ×
-              </button>
+              <button onClick={() => { setShowScannerModal(false); setManualCourseCode(''); }}
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center font-bold cursor-pointer">�</button>
             </div>
-
-            {/* Selector Tabs */}
-            <div className="flex border-b border-slate-100 shrink-0">
-              <button
-                type="button"
-                onClick={() => setScannerMode('simulation')}
-                className={`flex-1 py-3 text-center text-xs font-black transition-all border-b-2 ${
-                  scannerMode === 'simulation' || scannerMode === 'camera'
-                    ? 'border-blue-600 text-blue-600 font-bold bg-blue-50/20'
-                    : 'border-transparent text-slate-400 hover:text-slate-600'
-                }`}
-              >
-                🎥 Imbas QR Kod
-              </button>
-              <button
-                type="button"
-                onClick={() => setScannerMode('manual')}
-                className={`flex-1 py-3 text-center text-xs font-black transition-all border-b-2 ${
-                  scannerMode === 'manual'
-                    ? 'border-blue-600 text-blue-600 font-bold bg-blue-50/20'
-                    : 'border-transparent text-slate-400 hover:text-slate-600'
-                }`}
-              >
-                ✍️ Kod Manual
-              </button>
-            </div>
-
-            {/* Modal Body */}
-            <div className="p-6 overflow-y-auto max-h-[calc(90vh-130px)] space-y-5">
-              
-              {/* TAB 1: QR CODE IMAGES & VIEWFINDER SIMULATION */}
-              {(scannerMode === 'simulation' || scannerMode === 'camera') && (
-                <div className="space-y-4">
-                  
-                  {/* Camera vs Simulation toggle */}
-                  <div className="flex items-center justify-between p-1 bg-slate-100 rounded-xl text-xs text-slate-600">
-                    <button
-                      type="button"
-                      onClick={() => setScannerMode('simulation')}
-                      className={`flex-1 py-1.5 rounded-lg font-bold transition-all ${scannerMode === 'simulation' ? 'bg-white text-slate-800 shadow-3xs' : 'text-slate-500 hover:text-slate-700'}`}
-                    >
-                      🚀 Simulasi Imbasan (Demo)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setScannerMode('camera')}
-                      className={`flex-1 py-1.5 rounded-lg font-bold transition-all ${scannerMode === 'camera' ? 'bg-white text-slate-800 shadow-3xs' : 'text-slate-500 hover:text-slate-700'}`}
-                    >
-                      📷 Kamera Live (Webcam)
-                    </button>
-                  </div>
-
-                  {/* QR Scan Viewport */}
-                  <div className="relative bg-slate-900 rounded-2xl h-52 overflow-hidden border border-slate-850 shadow-inner flex flex-col items-center justify-center">
-                    
-                    {/* Live Camera Feed */}
-                    {scannerMode === 'camera' && (
-                      <div className="absolute inset-0 w-full h-full">
-                        {cameraPermission === 'prompt' && (
-                          <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-4 text-slate-400 text-xs">
-                            <Camera className="w-8 h-8 mb-2 text-slate-500 animate-pulse" />
-                            <p className="font-semibold">Menghubungkan Kamera Peranti...</p>
-                            <p className="text-[10px] text-slate-500 mt-1">Sila berikan kebenaran kamera pada pelayar anda.</p>
-                          </div>
-                        )}
-                        {cameraPermission === 'denied' && (
-                          <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-4 text-slate-400 text-xs bg-slate-950">
-                            <AlertTriangle className="w-8 h-8 mb-2 text-amber-500" />
-                            <p className="font-semibold text-slate-200">Akses Kamera Disekat / Gagal</p>
-                            <p className="text-[10px] text-slate-500 mt-1 max-w-62.5">Kamera tidak dapat diakses atau disekat oleh sekatan iFrame. Sila gunakan mod Simulasi.</p>
-                          </div>
-                        )}
-                        <video id="qr-video" className="w-full h-full object-cover" playsInline muted />
-                      </div>
-                    )}
-
-                    {/* Simulation Frame */}
-                    {scannerMode === 'simulation' && (
-                      <div className="absolute inset-0 w-full h-full flex flex-col items-center justify-center bg-slate-950 text-center p-4">
-                        {isScanning ? (
-                          <div className="space-y-3 z-10">
-                            <div className="relative flex items-center justify-center">
-                              <span className="animate-ping absolute inline-flex h-10 w-10 rounded-full bg-blue-400 opacity-75"></span>
-                              <QrCode className="w-10 h-10 text-blue-400 relative" />
-                            </div>
-                            <p className="text-xs font-bold text-slate-100 tracking-wide animate-pulse">Mengimbas Kod QR...</p>
-                            <p className="text-[10px] text-blue-400 font-mono">Payload: enroll:{scannedCourse?.id}</p>
-                          </div>
-                        ) : scanningSuccess ? (
-                          <div className="space-y-3 z-10 text-green-400 animate-in zoom-in duration-300">
-                            <CheckCircle2 className="w-12 h-12 mx-auto text-green-400" />
-                            <p className="text-xs font-extrabold tracking-wide">Imbasan Berjaya!</p>
-                            <p className="text-[10px] text-slate-300 font-bold">{scannedCourse?.code} - {scannedCourse?.name}</p>
-                          </div>
-                        ) : (
-                          <div className="space-y-2 z-10 text-slate-400 max-w-65">
-                            <QrCode className="w-8 h-8 mx-auto text-slate-600" />
-                            <p className="text-xs font-bold text-slate-300">Sedia untuk Mengimbas</p>
-                            <p className="text-[10px] text-slate-500 leading-normal">
-                              Pilih mana-mana kursus di bawah untuk mensimulasikan imbasan kod QR bercetak pensyarah secara interaktif!
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Laser overlay during scan */}
-                    {isScanning && (
-                      <div className="absolute inset-x-0 top-0 h-1 bg-blue-500 shadow-[0_0_15px_#3b82f6] z-20 animate-bounce" style={{ animationDuration: '2s' }} />
-                    )}
-
-                    {/* Focus boundaries bracket overlay */}
-                    <div className="absolute w-44 h-32 border-2 border-slate-700/40 rounded-xl z-10 pointer-events-none flex items-center justify-center">
-                      <div className="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-blue-500 rounded-tl-md"></div>
-                      <div className="absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 border-blue-500 rounded-tr-md"></div>
-                      <div className="absolute bottom-0 left-0 w-4 h-4 border-b-2 border-l-2 border-blue-500 rounded-bl-md"></div>
-                      <div className="absolute bottom-0 right-0 w-4 h-4 border-b-2 border-r-2 border-blue-500 rounded-br-md"></div>
-                    </div>
-                  </div>
-
-                  {/* Course Picker list for Simulating Scan */}
-                  {scannerMode === 'simulation' && (
-                    <div className="space-y-2">
-                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Simulasikan Imbasan QR Pensyarah:</p>
-                      
-                      {courses.filter(c => !enrolledCourseIds.includes(c.id)).length === 0 ? (
-                        <div className="p-4 rounded-xl border border-dashed border-slate-150 text-slate-400 text-center text-xs bg-slate-50 italic">
-                          Semua kursus sedia ada telah berdaftar. Sila cipta kursus baru di Dashboard Pensyarah terlebih dahulu!
+            <div className="overflow-y-auto p-5 space-y-4">
+              <form onSubmit={handleManualEnroll} className="flex gap-2">
+                <input id="manualCourseCode" name="manualCourseCode" type="text" required
+                  placeholder="Kod kursus e.g. DJF32052"
+                  value={manualCourseCode}
+                  onChange={(e) => setManualCourseCode(e.target.value)}
+                  className="flex-1 bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-sm font-mono uppercase outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500" />
+                <button type="submit"
+                  className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2 rounded-xl text-xs cursor-pointer shrink-0">
+                  Daftar
+                </button>
+              </form>
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase mb-2">Kursus Tersedia ({allCourses.filter(c => !enrolledCourseIds.includes(c.id)).length})</p>
+                {allCourses.filter(c => !enrolledCourseIds.includes(c.id)).length === 0 ? (
+                  <p className="text-xs text-slate-400 text-center py-4">Tiada kursus tersedia.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {allCourses.filter(c => !enrolledCourseIds.includes(c.id)).map((course) => (
+                      <button key={course.id} onClick={() => handleEnrollInCourse(course.id)}
+                        className="w-full flex items-center justify-between p-3 border border-slate-100 hover:border-blue-200 rounded-xl text-left text-xs cursor-pointer hover:bg-blue-50/30 transition-all">
+                        <div className="min-w-0">
+                          <p className="font-bold text-slate-800">{course.code} � {course.name}</p>
+                          <p className="text-[10px] text-slate-400">{course.location}</p>
                         </div>
-                      ) : (
-                        <div className="space-y-2 max-h-45 overflow-y-auto pr-1">
-                          {courses
-                            .filter(c => !enrolledCourseIds.includes(c.id))
-                            .map((course) => (
-                              <button
-                                key={course.id}
-                                type="button"
-                                disabled={isScanning}
-                                onClick={() => handleSimulatedScan(course)}
-                                className="w-full flex items-center justify-between p-3 border border-slate-150 hover:border-blue-200 bg-slate-50/40 hover:bg-blue-50/10 rounded-2xl transition-all text-left text-xs cursor-pointer group"
-                              >
-                                <div className="min-w-0 flex-1">
-                                  <div className="flex items-center gap-1.5">
-                                    <span className="font-black text-[9px] bg-blue-50 text-blue-600 px-1.5 rounded uppercase">{course.code}</span>
-                                    <span className="text-[9px] text-slate-400 font-bold">{course.location}</span>
-                                  </div>
-                                  <p className="font-bold text-slate-800 mt-1 truncate">{course.name}</p>
-                                </div>
-                                <span className="bg-blue-600 group-hover:bg-blue-700 text-white font-extrabold text-[10px] px-2.5 py-1 rounded-xl shadow-3xs group-hover:scale-103 transition-all shrink-0 ml-2">
-                                  Imbas QR (Scan)
-                                </span>
-                              </button>
-                            ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Camera prompt guidelines */}
-                  {scannerMode === 'camera' && (
-                    <div className="bg-slate-50 border border-slate-150 rounded-2xl p-3 text-[11px] text-slate-500 space-y-1.5 leading-relaxed">
-                      <p className="font-bold text-slate-700 flex items-center gap-1">
-                        <Camera className="w-3.5 h-3.5 text-blue-600" /> Panduan Imbasan Kamera:
-                      </p>
-                      <p>1. Dekatkan kamera telefon/peranti ke hadapan kod QR pendaftaran kursus pensyarah.</p>
-                      <p>2. Pastikan kod QR berada di dalam bingkai segi empat biru di atas.</p>
-                      <p className="text-[10px] text-slate-400 italic">Nota: Oleh kerana sekatan keselamatan di dalam iFrame AI Studio, beberapa penyemak imbas menyekat akses perkakasan kamera. Jika kamera anda tidak menyala, sila pilih tab <strong>Simulasi Imbasan</strong> di atas untuk menguji fungsi ini secara automatik.</p>
-                    </div>
-                  )}
-
-                </div>
-              )}
-
-              {/* TAB 2: MANUAL COURSE CODE ENROLLMENT FORM */}
-              {scannerMode === 'manual' && (
-                <form onSubmit={handleManualEnroll} className="space-y-4">
-                  <div className="space-y-1.5">
-                    <label htmlFor="manualCourseCode" className="block text-xs font-black text-slate-500 uppercase">Kod Kursus Rasmi (Course Code)</label>
-                    <div className="relative">
-                      <input
-                        id="manualCourseCode"
-                        name="manualCourseCode"
-                        type="text"
-                        required
-                        placeholder="Contoh: DJJ31022"
-                        value={manualCourseCode}
-                        onChange={(e) => setManualCourseCode(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3.5 text-sm placeholder-slate-400 focus:bg-white focus:ring-2 focus:ring-blue-100 focus:border-blue-500 outline-none transition-all font-mono uppercase tracking-wider text-slate-700"
-                      />
-                    </div>
-                    <p className="text-[10px] text-slate-400 leading-normal">Masukkan kod kursus pensyarah secara manual untuk mendaftar tanpa imbasan kamera.</p>
+                        <span className="bg-blue-600 text-white font-bold text-[10px] px-3 py-1 rounded-lg shrink-0 ml-2">Daftar</span>
+                      </button>
+                    ))}
                   </div>
-
-                  <div className="bg-slate-50 border border-slate-100 rounded-2xl p-3 text-[10px] text-slate-500 leading-relaxed">
-                    <p className="font-semibold text-slate-600 mb-1">Kursus Aktif Dalam Sistem (Available Course Codes):</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {courses.map(c => (
-                        <span key={c.id} className="bg-white border border-slate-200 text-slate-700 font-mono text-[9px] px-1.5 py-0.5 rounded uppercase font-bold">
-                          {c.code}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-
-                  <button
-                    type="submit"
-                    className="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-extrabold py-2.5 rounded-xl text-xs transition-all cursor-pointer shadow-md shadow-blue-100"
-                  >
-                    Daftar Masuk Kursus (Enroll Course)
-                  </button>
-                </form>
-              )}
-
+                )}
+              </div>
             </div>
           </motion.div>
         </div>
