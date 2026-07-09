@@ -89,6 +89,21 @@ export default function LecturerDashboard() {
   const [lecturerNotes, setLecturerNotes] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'present' | 'late' | 'absent' | 'bermasalah_pending' | 'bermasalah_all'>('all');
 
+  // Helper: check if a date string is in the current week (Mon-Sun)
+  const isCurrentWeek = (dateStr: string): boolean => {
+    const d = new Date(dateStr);
+    const now = new Date();
+    const startOfWeek = new Date(now);
+    startOfWeek.setDate(now.getDate() - now.getDay() + 1); // Monday
+    startOfWeek.setHours(0, 0, 0, 0);
+    const endOfWeek = new Date(startOfWeek);
+    endOfWeek.setDate(startOfWeek.getDate() + 7); // Next Monday
+    return d >= startOfWeek && d < endOfWeek;
+  };
+
+  // Active sessions filtered to current week only (for dashboard)
+  const currentWeekActive = sessions.filter(s => s.status === 'active' && isCurrentWeek(s.date));
+
   const fetchCurrentLocation = async () => {
     setIsFetchingGPS(true);
     try {
@@ -918,8 +933,8 @@ export default function LecturerDashboard() {
               <div className="bg-white border border-slate-100 p-6 rounded-2xl shadow-xs">
                 <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Live Active Sessions</span>
                 <span className="text-3xl font-black text-green-600 flex items-center gap-2">
-                  {sessions.filter(s => s.status === 'active').length}
-                  {sessions.filter(s => s.status === 'active').length > 0 && <span className="w-2.5 h-2.5 bg-green-500 rounded-full animate-pulse"></span>}
+                  {currentWeekActive.length}
+                  {currentWeekActive.length > 0 && <span className="w-2.5 h-2.5 bg-green-500 rounded-full animate-pulse"></span>}
                 </span>
                 <p className="text-[10px] text-slate-400 mt-1">Awaiting student checks</p>
               </div>
@@ -1028,17 +1043,17 @@ export default function LecturerDashboard() {
             })()}
 
             {/* Live Active Sessions — current week only */}
-            {sessions.filter(s => s.status === 'active').length > 0 && (
+            {currentWeekActive.length > 0 && (
               <div className="bg-white border border-green-100 rounded-3xl p-6 shadow-sm">
                 <div className="flex justify-between items-center mb-4">
                   <h4 className="font-bold text-slate-800 text-sm flex items-center gap-1.5">
-                    <Clock className="w-4.5 h-4.5 text-green-500 animate-pulse" /> Live Sessions — Current Week
+                    <Clock className="w-4.5 h-4.5 text-green-500 animate-pulse" /> Live Sessions — This Week
                   </h4>
                   <button onClick={() => setActiveTab('sessions')}
                     className="text-xs text-blue-600 font-bold hover:underline">All Sessions →</button>
                 </div>
                 <div className="space-y-2">
-                  {sessions.filter(s => s.status === 'active').map(sess => (
+                  {currentWeekActive.map(sess => (
                     <div key={sess.id} className="flex items-center justify-between bg-green-50/30 border border-green-100 rounded-2xl px-4 py-3">
                       <div className="flex items-center gap-3 flex-1 min-w-0">
                         <span className="font-extrabold text-xs text-blue-600 w-16 shrink-0">{sess.courseCode}</span>
