@@ -12,6 +12,10 @@ import * as api from '../lib/api';
 import { calculateDistance, getCurrentCoordinates } from '../lib/geoUtils';
 import PolikuMap from './PolikuMap';
 import VersionDisplay from './VersionDisplay';
+import AppealSubmissionModal from './student/modals/AppealSubmissionModal';
+import CourseEnrollmentModal from './student/modals/CourseEnrollmentModal';
+import GeofenceCheckModal from './student/modals/GeofenceCheckModal';
+
 
 export default function StudentDashboard() {
   const { currentUser, setCurrentUser, sessions, setSessions, records, setRecords, logout, alerts = [], setAlerts, courses = [], setCourses, refreshData } = useAppStore();
@@ -1691,128 +1695,29 @@ export default function StudentDashboard() {
               </div>
             </div>
 
-            {/* POPUP MODAL: Upload Exemption Evidence Form */}
-            {selectedRecordForAppeal && (
-              <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4">
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  className="bg-white rounded-3xl border border-slate-100 shadow-2xl w-full max-w-md overflow-hidden"
-                >
-                  <div className="bg-slate-900 text-white p-5 flex justify-between items-center">
-                    <div>
-                      <h4 className="font-bold text-sm">Kemukakan Bukti Kehadiran</h4>
-                      <p className="text-[10px] text-slate-400">Upload medical certificate or college excuse letters</p>
-                    </div>
-                    <button
-                      onClick={() => {
-                        setSelectedRecordForAppeal(null);
-                        setEvidenceType('');
-                        setEvidenceNotes('');
-                        setEvidenceFileName('');
-                        setEvidenceFile('');
-                      }}
-                      className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-all cursor-pointer"
-                    >
-                      <span className="text-xl font-bold">×</span>
-                    </button>
-                  </div>
-
-                  <form onSubmit={handleSubmitAppeal} className="p-5 space-y-4">
-                    <div>
-                      <label htmlFor="evidenceType" className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
-                        Sebab / Jenis Dokumen *
-                      </label>
-                      <select
-                        id="evidenceType"
-                        name="evidenceType"
-                        required
-                        value={evidenceType}
-                        onChange={(e) => setEvidenceType(e.target.value as any)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs text-slate-700 outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 transition-all cursor-pointer font-bold"
-                      >
-                        <option value="">-- Sila Pilih Jenis Bukti --</option>
-                        <option value="sijil_sakit">Sijil Sakit (MC Klinik/Hospital)</option>
-                        <option value="surat_pelepasan">Surat Pelepasan / Kebenaran Pengecualian Kuliah</option>
-                        <option value="lain_lain">Sebab-sebab Lain (Kecemasan/Keluarga)</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label htmlFor="evidenceNotes" className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
-                        Nyatakan Alasan / Justifikasi *
-                      </label>
-                      <textarea
-                        id="evidenceNotes"
-                        name="evidenceNotes"
-                        required
-                        rows={3}
-                        placeholder="Tulis penerangan ringkas mengenai sebab anda terlepas kuliah atau berada di luar geofence..."
-                        value={evidenceNotes}
-                        onChange={(e) => setEvidenceNotes(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs text-slate-700 placeholder-slate-400 outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 transition-all resize-none"
-                      />
-                    </div>
-
-                    <div>
-                      <label htmlFor="evidenceFile" className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
-                        Muat Naik Sijil / Dokumen Bukti *
-                      </label>
-                      <div className="border-2 border-dashed border-slate-200 hover:border-blue-400 rounded-2xl p-4 text-center cursor-pointer hover:bg-slate-50/50 transition-all relative">
-                        <input
-                          id="evidenceFile"
-                          name="evidenceFile"
-                          type="file"
-                          required={!evidenceFile}
-                          accept="image/*,application/pdf"
-                          onChange={handleFileChange}
-                          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                        />
-                        <div className="space-y-1 text-slate-500">
-                          <p className="text-xs font-bold text-slate-600">
-                            {evidenceFileName ? '✓ File Selected:' : 'Sila Pilih / Seret Fail Sijil'}
-                          </p>
-                          <p className="text-[10px] text-slate-400 font-mono truncate max-w-xs mx-auto">
-                            {evidenceFileName || 'Sijil_Sakit.pdf, Surat_Sokongan.png (PDF/Image)'}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex gap-2.5 pt-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelectedRecordForAppeal(null);
-                          setEvidenceType('');
-                          setEvidenceNotes('');
-                          setEvidenceFileName('');
-                          setEvidenceFile('');
-                        }}
-                        className="flex-1 border border-slate-200 text-slate-600 font-bold py-2 rounded-xl text-xs hover:bg-slate-50 transition-all cursor-pointer"
-                      >
-                        Batal
-                      </button>
-                      <button
-                        type="submit"
-                        disabled={isSubmittingAppeal}
-                        className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-extrabold py-2 rounded-xl text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50"
-                      >
-                        {isSubmittingAppeal ? (
-                          <>
-                            <span className="w-3.5 h-3.5 border-2 border-slate-300 border-t-white rounded-full animate-spin"></span>
-                            Menghantar...
-                          </>
-                        ) : (
-                          'Hantar Permohonan'
-                        )}
-                      </button>
-                    </div>
-                  </form>
-                </motion.div>
-              </div>
-            )}
-
+            
+            <AppealSubmissionModal
+              show={!!selectedRecordForAppeal}
+              selectedRecordForAppeal={selectedRecordForAppeal}
+              evidenceType={evidenceType}
+              evidenceNotes={evidenceNotes}
+              evidenceFileName={evidenceFileName}
+              evidenceFile={evidenceFile}
+              isSubmittingAppeal={isSubmittingAppeal}
+              setEvidenceType={setEvidenceType}
+              setEvidenceNotes={setEvidenceNotes}
+              setEvidenceFileName={setEvidenceFileName}
+              setEvidenceFile={setEvidenceFile}
+              onClose={() => {
+                setSelectedRecordForAppeal(null);
+                setEvidenceType('');
+                setEvidenceNotes('');
+                setEvidenceFileName('');
+                setEvidenceFile('');
+              }}
+              onSubmitAppeal={handleSubmitAppeal}
+              onFileChange={handleFileChange}
+            />
           </div>
 
         </div>
@@ -1865,102 +1770,31 @@ export default function StudentDashboard() {
         </button>
       </div>
 
-      {/* Out of Zone Location Confirmation Modal Overlay */}
-      {showOutOfZoneConfirm && targetSession && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl border border-slate-100 space-y-4 animate-in fade-in zoom-in duration-200">
-            <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center text-amber-600">
-              <AlertTriangle className="w-6 h-6 animate-pulse" />
-            </div>
-            
-            <div className="space-y-1.5">
-              <h4 className="text-base font-extrabold text-slate-800">Sempadan Kelas Luar (Out of Zone)!</h4>
-              <p className="text-xs text-slate-500 leading-relaxed">
-                Anda dikesan berada di luar sempadan geofence kelas (<span className="text-amber-600 font-bold">{computedDistance}m</span>, had sempadan: <span className="font-bold text-slate-700">{targetSession.radius || 50}m</span>).
-              </p>
-            </div>
+      
+      <GeofenceCheckModal
+        show={showOutOfZoneConfirm}
+        targetSession={targetSession}
+        computedDistance={computedDistance}
+        isInsideGeofence={isInsideGeofence}
+        studentLat={studentLat}
+        studentLng={studentLng}
+        onClose={() => {
+          setShowOutOfZoneConfirm(false);
+          setIsSubmitting(false);
+        }}
+        onProceedCheckIn={proceedCheckIn}
+      />
 
-            <div className="bg-amber-50 border border-amber-100/60 rounded-2xl p-3 text-[11px] text-amber-800 space-y-1 leading-relaxed">
-              <p className="font-bold">Makluman Penting:</p>
-              <p>Meneruskan pendaftaran masuk akan merekodkan kehadiran anda sebagai <span className="font-bold bg-amber-100/80 px-1 py-0.5 rounded">Kehadiran Bermasalah</span>.</p>
-              <p>Anda <span className="font-bold">wajib</span> mengemukakan Sijil Sakit (MC) atau Surat Pelepasan di bawah tab &quot;History&quot; untuk semakan pensyarah.</p>
-            </div>
-
-            <div className="flex gap-2.5 pt-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setShowOutOfZoneConfirm(false);
-                  setIsSubmitting(false);
-                }}
-                className="flex-1 py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-all cursor-pointer text-center"
-              >
-                Batal
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  proceedCheckIn(studentLat, studentLng, computedDistance, isInsideGeofence);
-                }}
-                className="flex-1 py-2.5 px-4 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white font-bold rounded-xl text-xs transition-all cursor-pointer text-center shadow-md shadow-amber-100"
-              >
-                Ya, Daftar Bermasalah
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-
-
-      {/* MODAL: Daftar Kursus � available courses + manual code */}
-      {showScannerModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
-            className="bg-white rounded-2xl shadow-xl w-full max-w-md flex flex-col max-h-85vh">
-            <div className="p-5 border-b border-slate-100 shrink-0 flex justify-between items-center">
-              <div>
-                <h4 className="font-bold text-slate-800 text-sm">Daftar Kursus</h4>
-                <p className="text-[10px] text-slate-400 mt-0.5">Pilih kursus atau masukkan kod manual</p>
-              </div>
-              <button onClick={() => { setShowScannerModal(false); setManualCourseCode(''); }}
-                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center font-bold cursor-pointer">�</button>
-            </div>
-            <div className="overflow-y-auto p-5 space-y-4">
-              <form onSubmit={handleManualEnroll} className="flex gap-2">
-                <input id="manualCourseCode" name="manualCourseCode" type="text" required
-                  placeholder="Kod kursus e.g. DJF32052"
-                  value={manualCourseCode}
-                  onChange={(e) => setManualCourseCode(e.target.value)}
-                  className="flex-1 bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-sm font-mono uppercase outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500" />
-                <button type="submit"
-                  className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2 rounded-xl text-xs cursor-pointer shrink-0">
-                  Daftar
-                </button>
-              </form>
-              <div>
-                <p className="text-[10px] font-bold text-slate-400 uppercase mb-2">Kursus Tersedia ({allCourses.filter(c => !enrolledCourseIds.includes(c.id)).length})</p>
-                {allCourses.filter(c => !enrolledCourseIds.includes(c.id)).length === 0 ? (
-                  <p className="text-xs text-slate-400 text-center py-4">Tiada kursus tersedia.</p>
-                ) : (
-                  <div className="space-y-2">
-                    {allCourses.filter(c => !enrolledCourseIds.includes(c.id)).map((course) => (
-                      <button key={course.id} onClick={() => handleEnrollInCourse(course.id)}
-                        className="w-full flex items-center justify-between p-3 border border-slate-100 hover:border-blue-200 rounded-xl text-left text-xs cursor-pointer hover:bg-blue-50/30 transition-all">
-                        <div className="min-w-0">
-                          <p className="font-bold text-slate-800">{course.code} � {course.name}</p>
-                          <p className="text-[10px] text-slate-400">{course.location}</p>
-                        </div>
-                        <span className="bg-blue-600 text-white font-bold text-[10px] px-3 py-1 rounded-lg shrink-0 ml-2">Daftar</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          </motion.div>
-        </div>
-      )}
+      <CourseEnrollmentModal
+        show={showScannerModal}
+        manualCourseCode={manualCourseCode}
+        allCourses={allCourses}
+        enrolledCourseIds={enrolledCourseIds}
+        setManualCourseCode={setManualCourseCode}
+        onClose={() => { setShowScannerModal(false); setManualCourseCode(''); }}
+        onManualEnroll={handleManualEnroll}
+        onEnrollInCourse={handleEnrollInCourse}
+      />
 
       <VersionDisplay />
     </div>

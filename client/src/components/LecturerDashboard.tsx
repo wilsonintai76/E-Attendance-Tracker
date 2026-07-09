@@ -14,6 +14,13 @@ import PolikuMap from './PolikuMap';
 import CourseSessionCard from './CourseSessionCard';
 import PreviousWeeksPanel from './PreviousWeeksPanel';
 import VersionDisplay from './VersionDisplay';
+import EditSessionModal from './lecturer/modals/EditSessionModal';
+import CourseQRModal from './lecturer/modals/CourseQRModal';
+import ReviewAppealModal from './lecturer/modals/ReviewAppealModal';
+import BulkAttendanceModal from './lecturer/modals/BulkAttendanceModal';
+import RegisterCourseModal from './lecturer/modals/RegisterCourseModal';
+import CreateSessionModal from './lecturer/modals/CreateSessionModal';
+
 
 export default function LecturerDashboard() {
   const { currentUser, sessions, setSessions, records, setRecords, logout, courses = [], setCourses, alerts = [], setAlerts, refreshData } = useAppStore();
@@ -1931,947 +1938,123 @@ export default function LecturerDashboard() {
         </button>
       </div>
 
-      {/* Create Session Modal */}
-      {showCreateModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-end sm:items-center justify-center z-50 animate-fade-in">
-          <motion.div 
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="bg-white rounded-t-3xl sm:rounded-3xl shadow-xl w-full sm:max-w-md border border-slate-100 flex flex-col max-h-[92vh] sm:max-h-[90vh]"
-          >
-            <div className="shrink-0 p-5 sm:p-6 border-b border-slate-100">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="font-bold text-slate-800 text-base sm:text-lg">Create Live Session</h3>
-                  <p className="text-[11px] text-slate-400 mt-0.5">Start a geofenced attendance session</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setShowCreateModal(false)}
-                  className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center text-lg font-bold transition-all cursor-pointer shrink-0"
-                >
-                  ×
-                </button>
-              </div>
-            </div>
+      {/* Modals extracted */}
+      <CreateSessionModal
+        show={showCreateModal}
+        courses={courses}
+        sessions={sessions}
+        selectedCourseId={selectedCourseId}
+        courseCode={courseCode}
+        courseName={courseName}
+        classGroup={classGroup}
+        useGeofencing={useGeofencing}
+        latitude={latitude}
+        longitude={longitude}
+        radius={radius}
+        overrideGeofencing={overrideGeofencing}
+        sessionWeek={sessionWeek}
+        sessionDate={sessionDate}
+        sessionHours={sessionHours}
+        deliveryMode={deliveryMode}
+        createFullSemester={createFullSemester}
+        setSelectedCourseId={setSelectedCourseId}
+        setCourseCode={setCourseCode}
+        setCourseName={setCourseName}
+        setClassGroup={setClassGroup}
+        setUseGeofencing={setUseGeofencing}
+        setLatitude={setLatitude}
+        setLongitude={setLongitude}
+        setRadius={setRadius}
+        setOverrideGeofencing={setOverrideGeofencing}
+        setSessionWeek={setSessionWeek}
+        setSessionDate={setSessionDate}
+        setSessionHours={setSessionHours}
+        setDeliveryMode={setDeliveryMode}
+        setCreateFullSemester={setCreateFullSemester}
+        onClose={() => setShowCreateModal(false)}
+        onSubmit={handleCreateSession}
+        onNavigateToCourses={() => {
+          setShowCreateModal(false);
+          setActiveTab('courses');
+          toast.info('Register a course with its standard classroom coordinates!');
+        }}
+      />
 
-            {courses.length === 0 ? (
-              <div className="p-5 sm:p-6">
-              <div className="bg-amber-50 border border-amber-200 rounded-3xl p-6 text-center space-y-4">
-                <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center mx-auto text-amber-600">
-                  <AlertTriangle className="w-6 h-6 animate-pulse" />
-                </div>
-                <div>
-                  <h4 className="font-extrabold text-amber-800 text-sm">No Registered Courses</h4>
-                  <p className="text-[11px] text-amber-600 mt-1 leading-relaxed">
-                    All active attendance sessions must inherit their GPS coordinate limits from pre-registered courses.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowCreateModal(false);
-                    setActiveTab('courses');
-                    toast.info("Register a course with its standard classroom coordinates!");
-                  }}
-                  className="w-full bg-amber-600 hover:bg-amber-700 text-white font-bold py-2.5 px-4 rounded-xl text-xs transition-all cursor-pointer shadow-md shadow-amber-100"
-                >
-                  Go to Course Management First
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowCreateModal(false)}
-                  className="w-full border border-slate-200 text-slate-500 font-semibold py-2 rounded-xl text-xs hover:bg-slate-50 transition-all cursor-pointer"
-                >
-                  Close
-                </button>
-              </div>
-              </div>
-            ) : (
-              <form id="create-session-form" onSubmit={handleCreateSession} className="overflow-y-auto flex-1 p-5 sm:p-6 space-y-3.5">
-                <div className="bg-blue-50/50 border border-blue-100 p-3.5 rounded-2xl">
-                  <label htmlFor="selectedCourseId" className="text-xs font-extrabold text-blue-700 uppercase mb-1.5 flex items-center gap-1">
-                    <BookOpen className="w-3.5 h-3.5" /> Select Registered Course *
-                  </label>
-                  <select
-                    id="selectedCourseId"
-                    name="selectedCourseId"
-                    required
-                    value={selectedCourseId}
-                    onChange={(e) => {
-                      const courseId = e.target.value;
-                      setSelectedCourseId(courseId);
-                      if (courseId) {
-                        const selectedCourse = courses.find(c => c.id === courseId);
-                        if (selectedCourse) {
-                          setCourseCode(selectedCourse.code);
-                          setCourseName(selectedCourse.name);
-                          setClassGroup(selectedCourse.classGroup || '');
-                          if (selectedCourse.latitude && selectedCourse.longitude) {
-                            setUseGeofencing(true);
-                            setLatitude(selectedCourse.latitude.toString());
-                            setLongitude(selectedCourse.longitude.toString());
-                            setRadius(selectedCourse.radius || 50);
-                          } else {
-                            setUseGeofencing(false);
-                          }
-                          setOverrideGeofencing(false);
+      <ReviewAppealModal
+        show={!!selectedRecordForReview}
+        selectedRecordForReview={selectedRecordForReview}
+        lecturerNotes={lecturerNotes}
+        setLecturerNotes={setLecturerNotes}
+        onClose={() => {
+          setSelectedRecordForReview(null);
+          setLecturerNotes('');
+        }}
+        onReviewAppeal={handleReviewAppeal}
+      />
 
-                          // Find existing sessions for this course to auto-increment week and add date for next week
-                          const courseSessions = sessions.filter(
-                            s => s.courseCode.toLowerCase() === selectedCourse.code.toLowerCase()
-                          );
+      <CourseQRModal
+        show={showCourseQRModal}
+        course={selectedCourseForQR}
+        onClose={() => {
+          setShowCourseQRModal(false);
+          setSelectedCourseForQR(null);
+        }}
+      />
 
-                          if (courseSessions.length > 0) {
-                            // Find latest week and session chronologically
-                            let maxWeek = 0;
-                            let latestSession = courseSessions[0];
+      <EditSessionModal
+        show={showEditSessionModal}
+        editingSession={editingSession}
+        editSessionWeek={editSessionWeek}
+        editSessionDate={editSessionDate}
+        editSessionStatus={editSessionStatus}
+        setEditSessionWeek={setEditSessionWeek}
+        setEditSessionDate={setEditSessionDate}
+        setEditSessionStatus={setEditSessionStatus}
+        onClose={() => setShowEditSessionModal(false)}
+        onSave={handleSaveSession}
+      />
 
-                            courseSessions.forEach(s => {
-                              const w = s.week || 0;
-                              if (w > maxWeek) {
-                                maxWeek = w;
-                              }
-                              // Find chronologically latest session to add date for next week
-                              if (new Date(s.date) > new Date(latestSession.date)) {
-                                latestSession = s;
-                              }
-                            });
+      <BulkAttendanceModal
+        show={showBulkAttendanceModal}
+        bulkSession={bulkSession}
+        isLoadingStudents={isLoadingStudents}
+        enrolledStudents={enrolledStudents}
+        absentChecked={absentChecked}
+        isSubmittingBulk={isSubmittingBulk}
+        onClose={() => setShowBulkAttendanceModal(false)}
+        onToggleAbsentCheck={toggleAbsentCheck}
+        onSubmitBulkAttendance={handleSubmitBulkAttendance}
+      />
 
-                            const nextWeek = Math.min(14, maxWeek + 1);
-                            setSessionWeek(nextWeek.toString());
-
-                            try {
-                              const lastDate = new Date(latestSession.date);
-                              if (!isNaN(lastDate.getTime())) {
-                                lastDate.setDate(lastDate.getDate() + 7);
-                                setSessionDate(lastDate.toISOString().split('T')[0]);
-                                toast.success(`Auto-incremented to Week ${nextWeek} and updated date for next week!`);
-                              } else {
-                                toast.success(`Loaded settings. Auto-incremented to Week ${nextWeek}!`);
-                              }
-                            } catch (err) {
-                              setSessionDate(new Date().toISOString().split('T')[0]);
-                              toast.success(`Loaded settings. Auto-incremented to Week ${nextWeek}!`);
-                            }
-                          } else {
-                            setSessionWeek('1');
-                            setSessionDate(new Date().toISOString().split('T')[0]);
-                            toast.success(`Loaded settings for ${selectedCourse.code}!`);
-                          }
-                        }
-                      } else {
-                        setCourseCode('');
-                        setCourseName('');
-                        setOverrideGeofencing(false);
-                      }
-                    }}
-                    className="w-full bg-white border border-slate-200 rounded-xl py-1.5 px-3 text-xs text-slate-700 font-semibold focus:ring-1 focus:ring-blue-100 focus:border-blue-500 outline-none transition-all cursor-pointer"
-                  >
-                    <option value="">-- Choose Course --</option>
-                    {courses.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        [{c.code}] {c.name}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="text-[9px] text-blue-500 font-medium mt-1">Geofencing location details will be automatically inherited.</p>
-                </div>
-
-                {selectedCourseId && (
-                  <div className="bg-slate-50 border border-slate-100 p-3 rounded-xl text-xs space-y-1">
-                    <p className="text-slate-400 font-bold uppercase text-[9px]">Course Details (GPS Geofencing Active):</p>
-                    <p className="font-extrabold text-slate-700">{courseCode} - {courseName}</p>
-                    {latitude && longitude && (
-                      <p className="text-[10px] text-emerald-600 font-semibold">
-                        📍 Location: {courses.find(c => c.id === selectedCourseId)?.location || 'Standard Classroom'} ({radius}m radius)
-                      </p>
-                    )}
-                  </div>
-                )}
-
-                <div>
-                  <label htmlFor="classGroup" className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Class / Group *</label>
-                  <input
-                    id="classGroup"
-                    name="classGroup"
-                    type="text"
-                    required
-                    placeholder="e.g. DKM5A"
-                    value={classGroup}
-                    onChange={(e) => setClassGroup(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-sm text-slate-700 placeholder-slate-400 focus:bg-white focus:ring-2 focus:ring-blue-100 focus:border-blue-500 outline-none transition-all"
-                  />
-                </div>
-
-                {/* Session Details: Week, Date, and Lecture Hours */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div>
-                    <label htmlFor="sessionWeek" className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Lecture Week *</label>
-                    <select
-                      id="sessionWeek"
-                      name="sessionWeek"
-                      required
-                      value={sessionWeek}
-                      onChange={(e) => setSessionWeek(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-sm text-slate-700 focus:bg-white focus:ring-2 focus:ring-blue-100 focus:border-blue-500 outline-none transition-all cursor-pointer"
-                    >
-                      {Array.from({ length: 14 }, (_, i) => i + 1).map((w) => (
-                        <option key={w} value={w.toString()}>
-                          Week {w}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label htmlFor="sessionDate" className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Lecture Date *</label>
-                    <input
-                      id="sessionDate"
-                      name="sessionDate"
-                      type="date"
-                      required
-                      value={sessionDate}
-                      onChange={(e) => setSessionDate(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-sm text-slate-700 focus:bg-white focus:ring-2 focus:ring-blue-100 focus:border-blue-500 outline-none transition-all"
-                    />
-                  </div>
-
-                  <div>
-                    <label htmlFor="sessionHours" className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Hours Lecture *</label>
-                    <select
-                      id="sessionHours"
-                      name="sessionHours"
-                      required
-                      value={sessionHours}
-                      onChange={(e) => setSessionHours(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-sm text-slate-700 focus:bg-white focus:ring-2 focus:ring-blue-100 focus:border-blue-500 outline-none transition-all cursor-pointer"
-                    >
-                      <option value="1">1 Hour</option>
-                      <option value="2">2 Hours</option>
-                      <option value="3">3 Hours</option>
-                      <option value="4">4 Hours</option>
-                    </select>
-                  </div>
-                </div>
-
-                {/* Delivery Mode: Face to Face vs Online */}
-                <div className="bg-slate-50 border border-slate-100 p-3.5 rounded-2xl space-y-2">
-                  <label className="block text-[11px] font-extrabold text-slate-500 uppercase tracking-wider">
-                    Mod Kuliah / Delivery Mode *
-                  </label>
-                  <div className="grid grid-cols-2 gap-2.5">
-                    <button
-                      type="button"
-                      onClick={() => setDeliveryMode('f2f')}
-                      className={`flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl text-xs font-black transition-all cursor-pointer border ${
-                        deliveryMode === 'f2f'
-                          ? 'bg-blue-600 text-white border-blue-600 shadow-md shadow-blue-100'
-                          : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-                      }`}
-                    >
-                      <span className="text-sm">👥</span> F2F / Bersemuka
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setDeliveryMode('online')}
-                      className={`flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl text-xs font-black transition-all cursor-pointer border ${
-                        deliveryMode === 'online'
-                          ? 'bg-blue-600 text-white border-blue-600 shadow-md shadow-blue-100'
-                          : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-                      }`}
-                    >
-                      <span className="text-sm">🌐</span> Online / Atas Talian
-                    </button>
-                  </div>
-                  <p className="text-[9px] text-slate-400 font-semibold leading-normal">
-                    * Jika memilih <strong className="text-blue-600">Online</strong>, pelajar dibenarkan mendaftar kehadiran dari mana-mana lokasi tanpa dianggap &quot;Kehadiran Bermasalah&quot; (Bypass Geofencing).
-                  </p>
-                </div>
-
-                {/* 14-Week Semester Generation Toggle */}
-                <div className="bg-blue-50/40 border border-blue-100/50 p-3.5 rounded-2xl flex items-start gap-2.5">
-                  <input
-                    type="checkbox"
-                    id="createFullSemester"
-                    checked={createFullSemester}
-                    onChange={(e) => setCreateFullSemester(e.target.checked)}
-                    className="mt-0.5 rounded text-blue-600 focus:ring-blue-100 cursor-pointer w-4 h-4"
-                  />
-                  <div className="space-y-0.5">
-                    <label htmlFor="createFullSemester" className="text-xs font-bold text-slate-700 cursor-pointer flex items-center gap-1.5 select-none">
-                      Generate 14-Week Semester Schedule
-                    </label>
-                    <p className="text-[10px] text-slate-400 leading-normal">
-                      Automatically create weekly check-in sessions for weeks 1 to 14. Dates will be calculated spaced 7 days apart from the selected week.
-                    </p>
-                  </div>
-                </div>
-              </form>
-            )}
-
-            {/* Sticky Footer Buttons — outside scrollable form */}
-            {courses.length > 0 && (
-            <div className="shrink-0 p-5 sm:p-6 pt-0 border-t border-slate-100">
-                <div className="flex gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setShowCreateModal(false)}
-                    className="flex-1 border border-slate-200 text-slate-500 font-semibold py-2.5 rounded-xl hover:bg-slate-50 transition-all cursor-pointer"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    form="create-session-form"
-                    className="flex-1 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold py-2.5 rounded-xl transition-all cursor-pointer shadow-md shadow-blue-100"
-                  >
-                    Start Session
-                  </button>
-                </div>
-            </div>
-            )}
-          </motion.div>
-        </div>
-      )}
-
-      {/* POPUP MODAL: Lecturer Review Appeal / MC */}
-      {selectedRecordForReview && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="bg-white rounded-3xl border border-slate-100 shadow-2xl w-full max-w-lg overflow-hidden"
-          >
-            <div className="bg-slate-900 text-white p-5 flex justify-between items-center">
-              <div>
-                <h4 className="font-bold text-sm">Semakan Bukti Kehadiran Pelajar</h4>
-                <p className="text-[10px] text-slate-400">Review submitted medical certificates or letters of justification</p>
-              </div>
-              <button
-                onClick={() => {
-                  setSelectedRecordForReview(null);
-                  setLecturerNotes('');
-                }}
-                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-all cursor-pointer"
-              >
-                <span className="text-xl font-bold">×</span>
-              </button>
-            </div>
-
-            <div className="p-5 space-y-4 max-h-[80vh] overflow-y-auto">
-              {/* Student Metadata */}
-              <div className="grid grid-cols-2 gap-3 bg-slate-50 p-3.5 rounded-2xl border border-slate-100 text-xs">
-                <div>
-                  <span className="text-slate-400 font-bold block uppercase text-[9px]">Nama Pelajar:</span>
-                  <strong className="text-slate-800 text-[13px]">{selectedRecordForReview.studentName}</strong>
-                </div>
-                <div>
-                  <span className="text-slate-400 font-bold block uppercase text-[9px]">No Matrik:</span>
-                  <strong className="text-slate-800 font-mono">{selectedRecordForReview.matricNo}</strong>
-                </div>
-                <div className="mt-1">
-                  <span className="text-slate-400 font-bold block uppercase text-[9px]">Kumpulan Kelas:</span>
-                  <strong className="text-slate-800">{selectedRecordForReview.classGroup}</strong>
-                </div>
-                <div className="mt-1">
-                  <span className="text-slate-400 font-bold block uppercase text-[9px]">Jenis Pelepasan:</span>
-                  <strong className="text-blue-600 font-bold bg-blue-50 px-1.5 py-0.5 rounded text-[10px]">
-                    {selectedRecordForReview.evidenceType === 'sijil_sakit' 
-                      ? 'Sijil Sakit (MC)' 
-                      : selectedRecordForReview.evidenceType === 'surat_pelepasan' 
-                      ? 'Surat Pelepasan Kuliah' 
-                      : 'Sebab-sebab Lain'}
-                  </strong>
-                </div>
-              </div>
-
-              {/* Reason / Justification notes */}
-              <div className="space-y-1">
-                <span className="text-slate-400 font-bold block uppercase text-[9px]">Alasan Pelajar:</span>
-                <div className="bg-amber-50/40 border border-amber-100/50 p-3 rounded-xl text-xs text-slate-700 italic">
-                  &quot; {selectedRecordForReview.evidenceNotes || 'Tiada catatan sebab disediakan.'} &quot;
-                </div>
-              </div>
-
-              {/* Render simulated file / scanned image */}
-              <div className="space-y-1">
-                <span className="text-slate-400 font-bold block uppercase text-[9px]">Dokumen Lampiran:</span>
-                {selectedRecordForReview.evidenceFileKey ? (
-                  <div className="border border-slate-200 rounded-2xl p-3 bg-slate-100/30 flex flex-col items-center gap-2">
-                    {selectedRecordForReview.evidenceFileKey.startsWith('data:image/') ? (
-                      <div className="relative w-full max-h-40 overflow-hidden rounded-xl border border-slate-200 flex justify-center items-center bg-white">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img 
-                          src={selectedRecordForReview.evidenceFileKey} 
-                          alt="Evidence document" 
-                          className="object-contain max-h-40"
-                        />
-                      </div>
-                    ) : (
-                      <div className="w-full py-4 px-3 bg-white border border-slate-100 rounded-xl flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className="text-2xl">📄</span>
-                          <div>
-                            <p className="text-xs font-bold text-slate-700 truncate max-w-50">{selectedRecordForReview.evidenceFileName || 'dokumen_sokongan.pdf'}</p>
-                            <p className="text-[9px] text-slate-400">Document File (Simulated Preview)</p>
-                          </div>
-                        </div>
-                        <a 
-                          href={selectedRecordForReview.evidenceFileKey} 
-                          download={selectedRecordForReview.evidenceFileName || 'sijil_sakit.pdf'}
-                          className="text-blue-600 bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded-lg text-[10px] font-bold"
-                        >
-                          Muat Turun
-                        </a>
-                      </div>
-                    )}
-                    <span className="text-[9px] font-mono text-slate-400">Nama Fail: {selectedRecordForReview.evidenceFileName}</span>
-                  </div>
-                ) : (
-                  <div className="border border-dashed border-slate-200 rounded-2xl p-6 text-center text-slate-400 text-xs">
-                    Tiada fail dokumen dijumpai.
-                  </div>
-                )}
-              </div>
-
-              {/* Decision and Review Comments */}
-              <div className="space-y-1.5 pt-1 border-t border-slate-100">
-                <label className="block text-[10px] font-bold text-slate-500 uppercase">
-                  Catatan / Ulasan Pensyarah (Disimpan bersama keputusan)
-                </label>
-                <textarea
-                  rows={2}
-                  placeholder="Sila masukkan catatan maklumbalas mengenai permohonan ini..."
-                  value={lecturerNotes}
-                  onChange={(e) => setLecturerNotes(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs text-slate-700 outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 transition-all resize-none"
-                />
-              </div>
-
-              {/* Action Buttons */}
-              <div className="flex gap-2.5 pt-2">
-                <button
-                  type="button"
-                  onClick={() => handleReviewAppeal('rejected')}
-                  className="flex-1 bg-red-600 hover:bg-red-700 text-white font-extrabold py-2.5 rounded-xl text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5"
-                >
-                  ✗ Tolak (Absent)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleReviewAppeal('approved')}
-                  className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold py-2.5 rounded-xl text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5"
-                >
-                  ✓ Luluskan Kehadiran
-                </button>
-              </div>
-            </div>
-          </motion.div>
-        </div>
-      )}
-
-      {/* POPUP SUB-MODAL: Course GPS Geofence Configuration */}
-      {showCourseGpsModal && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-fade-in">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="bg-white rounded-3xl border border-slate-100 shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh]"
-          >
-            <div className="bg-slate-900 text-white p-5 flex justify-between items-center">
-              <div>
-                <h4 className="font-bold text-sm">Configure Course GPS Geofence</h4>
-                <p className="text-[10px] text-slate-400">Set standard attendance boundary for this course</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowCourseGpsModal(false)}
-                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/10 text-lg font-bold transition-all cursor-pointer"
-              >
-                ×
-              </button>
-            </div>
-
-            <div className="p-5 space-y-4 overflow-y-auto">
-              <div>
-                <label htmlFor="campusPreset" className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Campus Location Preset</label>
-                <select
-                  id="campusPreset"
-                  name="campusPreset"
-                  value={regSelectedPreset}
-                  onChange={(e) => handleApplyCoursePreset(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl py-1.5 px-3 text-xs text-slate-700 focus:ring-1 focus:ring-blue-100 focus:border-blue-500 outline-none transition-all cursor-pointer"
-                >
-                  <option value="">-- Custom Coordinates --</option>
-                  {POLIKU_PRESETS.map((p) => (
-                    <option key={p.name} value={p.name}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label htmlFor="regLat" className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Latitude</label>
-                  <input
-                    id="regLat"
-                    name="regLat"
-                    type="number"
-                    step="0.000001"
-                    required
-                    value={regLat}
-                    onChange={(e) => setRegLat(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl py-1.5 px-2.5 text-xs text-slate-700 font-mono focus:ring-1 focus:ring-blue-100 focus:border-blue-500 outline-none transition-all"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="regLng" className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Longitude</label>
-                  <input
-                    id="regLng"
-                    name="regLng"
-                    type="number"
-                    step="0.000001"
-                    required
-                    value={regLng}
-                    onChange={(e) => setRegLng(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl py-1.5 px-2.5 text-xs text-slate-700 font-mono focus:ring-1 focus:ring-blue-100 focus:border-blue-500 outline-none transition-all"
-                  />
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={fetchCurrentCourseLocation}
-                disabled={isFetchingCourseGPS}
-                className="w-full bg-white border border-slate-200 hover:border-blue-300 text-slate-700 hover:text-blue-600 font-bold py-2 px-2.5 rounded-xl text-[11px] flex items-center justify-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
-              >
-                <Navigation className={`w-3.5 h-3.5 ${isFetchingCourseGPS ? 'animate-spin text-blue-600' : ''}`} />
-                {isFetchingCourseGPS ? 'Fetching GPS...' : 'Capture My GPS Coordinates'}
-              </button>
-
-              <div>
-                <div className="flex justify-between items-center mb-1">
-                  <label htmlFor="regRadius" className="block text-[10px] font-bold text-slate-400 uppercase">Geofence Radius: {regRadius}m</label>
-                </div>
-                <input
-                  id="regRadius"
-                  name="regRadius"
-                  type="range"
-                  min="10"
-                  max="300"
-                  step="10"
-                  value={regRadius}
-                  onChange={(e) => setRegRadius(parseInt(e.target.value))}
-                  className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
-                />
-                <div className="flex justify-between text-[9px] text-slate-400 font-medium px-1 mt-0.5">
-                  <span>10m (Room)</span>
-                  <span>100m (Hall)</span>
-                  <span>300m (Campus)</span>
-                </div>
-              </div>
-
-              <div className="mt-3">
-                <label className="text-[10px] font-bold text-slate-400 uppercase mb-1.5 flex items-center gap-1">
-                  Interactive Map Picker
-                </label>
-                <PolikuMap
-                  latitude={parseFloat(regLat) || 1.6033}
-                  longitude={parseFloat(regLng) || 110.3547}
-                  radius={regRadius}
-                  interactive={true}
-                  onChange={(lat, lng) => {
-                    setRegLat(lat.toString());
-                    setRegLng(lng.toString());
-                  }}
-                  height="200px"
-                />
-              </div>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setShowCourseGpsModal(false);
-                  toast.success(`Course geofence boundary saved!`);
-                }}
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-xl text-xs shadow-md transition-all cursor-pointer flex items-center justify-center"
-              >
-                Confirm & Save Location
-              </button>
-            </div>
-          </motion.div>
-        </div>
-      )}
-
-
-      {/* POPUP MODAL: Show Course QR Code */}
-      {showCourseQRModal && selectedCourseForQR && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-fade-in">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="bg-white rounded-3xl border border-slate-100 shadow-2xl w-full max-w-md overflow-hidden flex flex-col"
-          >
-            <div className="bg-slate-900 text-white p-5 flex justify-between items-center shrink-0">
-              <div>
-                <h4 className="font-bold text-sm">Kod QR Pendaftaran Kursus</h4>
-                <p className="text-[10px] text-slate-400">Scan this QR code using the student portal to enroll.</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowCourseQRModal(false);
-                  setSelectedCourseForQR(null);
-                }}
-                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/10 text-lg font-bold transition-all cursor-pointer"
-              >
-                ×
-              </button>
-            </div>
-
-            <div className="p-6 flex flex-col items-center text-center space-y-4">
-              <div className="bg-blue-50/50 text-blue-700 rounded-2xl p-3 w-full text-xs font-semibold">
-                Kursus: <span className="font-extrabold text-blue-900">{selectedCourseForQR.code} - {selectedCourseForQR.name}</span>
-              </div>
-
-              {/* Real dynamic QR Code generated via qrserver.com */}
-              <div className="bg-white p-4 rounded-2xl border-2 border-slate-100 shadow-xs relative flex items-center justify-center w-57.5 h-57.5">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=enroll:${selectedCourseForQR.id}`}
-                  alt={`QR Code for ${selectedCourseForQR.code}`}
-                  className="w-50 h-50"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <p className="text-xs font-bold text-slate-700">Imbas Untuk Mendaftar (Scan to Enroll)</p>
-                <p className="text-[10px] text-slate-400 max-w-xs leading-relaxed">
-                  Tunjukkan kod QR ini kepada pelajar di dalam bilik kuliah. Pelajar boleh menggunakan ciri <strong>Imbas QR</strong> pada portal pelajar untuk mendaftar masuk ke kursus ini secara automatik.
-                </p>
-              </div>
-
-              <div className="bg-slate-50 border border-slate-150 rounded-2xl p-3 w-full space-y-1 text-left text-[11px] text-slate-500">
-                <p className="flex justify-between font-medium">
-                  <span>Kod Kursus:</span>
-                  <strong className="text-slate-700">{selectedCourseForQR.code}</strong>
-                </p>
-                <p className="flex justify-between font-medium">
-                  <span>Lokasi Rasmi:</span>
-                  <strong className="text-slate-700">{selectedCourseForQR.location}</strong>
-                </p>
-                <p className="flex justify-between font-medium">
-                  <span>Silibus Kuliah:</span>
-                  <strong className="text-slate-700">{selectedCourseForQR.totalContactHours} Jam (14 Minggu)</strong>
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setShowCourseQRModal(false);
-                  setSelectedCourseForQR(null);
-                }}
-                className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-2.5 rounded-xl text-xs transition-all cursor-pointer shadow-xs"
-              >
-                Tutup (Close)
-              </button>
-            </div>
-          </motion.div>
-        </div>
-      )}
-
-      {/* MODAL: Edit Session Date */}
-      {showEditSessionModal && editingSession && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
-          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
-            className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
-            <h4 className="font-bold text-slate-800 mb-4">Edit Session Details</h4>
-            <p className="text-xs text-slate-500 mb-4">{editingSession.courseCode} — Current Week: {editingSession.week}</p>
-            
-            <div className="space-y-3 mb-5">
-              <div>
-                <label htmlFor="editSessionWeek" className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Week Number</label>
-                <select id="editSessionWeek" value={editSessionWeek} onChange={(e) => setEditSessionWeek(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-sm outline-none focus:ring-2 focus:ring-blue-100 cursor-pointer">
-                  {Array.from({ length: 14 }, (_, i) => i + 1).map(w => <option key={w} value={w}>Week {w}</option>)}
-                </select>
-              </div>
-
-              <div>
-                <label htmlFor="editSessionDate" className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Date</label>
-                <input id="editSessionDate" type="date" required value={editSessionDate} onChange={(e) => setEditSessionDate(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-sm outline-none focus:ring-2 focus:ring-blue-100" />
-              </div>
-
-              <div>
-                <label htmlFor="editSessionStatus" className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Status</label>
-                <select id="editSessionStatus" value={editSessionStatus} onChange={(e) => setEditSessionStatus(e.target.value as 'active' | 'inactive')}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-sm outline-none focus:ring-2 focus:ring-blue-100 cursor-pointer font-bold">
-                  <option value="active">Active (LIVE)</option>
-                  <option value="inactive">Inactive</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="flex gap-2">
-              <button onClick={() => setShowEditSessionModal(false)}
-                className="flex-1 border border-slate-200 text-slate-500 font-semibold py-2 rounded-xl text-xs hover:bg-slate-50 cursor-pointer">Cancel</button>
-              <button onClick={handleSaveSession}
-                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded-xl text-xs cursor-pointer">Save Changes</button>
-            </div>
-          </motion.div>
-        </div>
-      )}
-
-      {/* MODAL: Manual Attendance (tick absent students) */}
-      {showBulkAttendanceModal && bulkSession && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
-          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
-            className="bg-white rounded-2xl shadow-xl w-full max-w-md flex flex-col max-h-[85vh]">
-            <div className="p-5 border-b border-slate-100 shrink-0">
-              <h4 className="font-bold text-slate-800">Manual Attendance</h4>
-              <p className="text-xs text-slate-400 mt-0.5">{bulkSession.courseCode} — Week {bulkSession.week} — {bulkSession.date}</p>
-            </div>
-            <div className="overflow-y-auto p-5 space-y-2">
-              {isLoadingStudents ? (
-                <div className="text-center py-8 text-slate-400">Loading students...</div>
-              ) : enrolledStudents.length === 0 ? (
-                <div className="text-center py-8 text-slate-400">No enrolled students found for this class.</div>
-              ) : (
-                enrolledStudents.map((s: any) => (
-                  <label key={s.id}
-                    className={`flex items-center gap-3 p-2.5 rounded-xl border cursor-pointer transition-all ${
-                      s.record_status === 'present' ? 'bg-green-50 border-green-100 opacity-60' :
-                      absentChecked.has(s.id) ? 'bg-amber-50 border-amber-200' : 'bg-slate-50 border-slate-100 hover:bg-white'
-                    }`}
-                  >
-                    <input type="checkbox" checked={absentChecked.has(s.id)} onChange={() => toggleAbsentCheck(s.id)}
-                      disabled={s.record_status === 'present'}
-                      className="w-4 h-4 rounded accent-amber-600" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-bold text-slate-700 truncate">{s.name}</p>
-                      <p className="text-[10px] text-slate-400">{s.matric_no || s.email}</p>
-                    </div>
-                    {s.record_status === 'present' ? (
-                      <span className="text-[9px] bg-green-100 text-green-700 font-bold px-2 py-0.5 rounded-full">Present</span>
-                    ) : (
-                      <span className="text-[9px] bg-red-100 text-red-600 font-bold px-2 py-0.5 rounded-full">Absent</span>
-                    )}
-                  </label>
-                ))
-              )}
-            </div>
-            <div className="p-5 border-t border-slate-100 shrink-0 flex gap-2">
-              <button onClick={() => setShowBulkAttendanceModal(false)}
-                className="flex-1 border border-slate-200 text-slate-500 font-semibold py-2.5 rounded-xl text-xs cursor-pointer">Cancel</button>
-              <button onClick={handleSubmitBulkAttendance} disabled={absentChecked.size === 0 || isSubmittingBulk}
-                className="flex-1 bg-amber-600 hover:bg-amber-700 disabled:bg-amber-300 text-white font-semibold py-2.5 rounded-xl text-xs cursor-pointer">
-                {isSubmittingBulk ? 'Saving...' : `Mark ${absentChecked.size} Present`}
-              </button>
-            </div>
-          </motion.div>
-        </div>
-      )}
-
-
-      {/* POPUP MODAL: Register Course Form Dialog */}
-      {showRegisterCourseModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-fade-in">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="bg-white rounded-3xl border border-slate-100 shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]"
-          >
-            <div className="bg-slate-900 text-white p-5 flex justify-between items-center shrink-0">
-              <div>
-                <h4 className="font-bold text-sm">{editingCourseId ? 'Edit Course' : 'Register New Course'}</h4>
-                <p className="text-[10px] text-slate-400">{editingCourseId ? 'Update curriculum specifications and GPS boundaries' : 'Set curriculum specifications, location, and standard Politeknik contact hours.'}</p>
-              </div>
-              <button
-                type="button"
-                onClick={handleCloseCourseModal}
-                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/10 text-lg font-bold transition-all cursor-pointer"
-              >
-                ×
-              </button>
-            </div>
-
-            <form onSubmit={handleRegisterCourse} className="flex flex-col min-h-0">
-              <div className="p-6 space-y-4 overflow-y-auto max-h-[calc(90vh-140px)]">
-                <div>
-                  <label htmlFor="regCode" className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Course Code *</label>
-                  <input
-                    id="regCode"
-                    name="regCode"
-                    type="text"
-                    required
-                    placeholder="e.g. DKM5012"
-                    value={regCode}
-                    onChange={(e) => setRegCode(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-sm text-slate-700 placeholder-slate-400 focus:bg-white focus:ring-2 focus:ring-blue-100 focus:border-blue-500 outline-none transition-all"
-                  />
-                </div>
-
-                <div>
-                  <label htmlFor="regName" className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Course Name *</label>
-                  <input
-                    id="regName"
-                    name="regName"
-                    type="text"
-                    required
-                    placeholder="e.g. Thermodynamics II"
-                    value={regName}
-                    onChange={(e) => setRegName(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-sm text-slate-700 placeholder-slate-400 focus:bg-white focus:ring-2 focus:ring-blue-100 focus:border-blue-500 outline-none transition-all"
-                  />
-                </div>
-
-                <div>
-                  <label htmlFor="regLocation" className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Classroom Location *</label>
-                  <input
-                    id="regLocation"
-                    name="regLocation"
-                    type="text"
-                    required
-                    placeholder="e.g. JKM Bilik Kuliah 1"
-                    value={regLocation}
-                    onChange={(e) => setRegLocation(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-sm text-slate-700 placeholder-slate-400 focus:bg-white focus:ring-2 focus:ring-blue-100 focus:border-blue-500 outline-none transition-all"
-                  />
-                </div>
-
-                <div>
-                  <label htmlFor="regClassGroup" className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Class / Group *</label>
-                  <input
-                    id="regClassGroup"
-                    name="regClassGroup"
-                    type="text"
-                    required
-                    placeholder="e.g. DKM5A"
-                    value={regClassGroup}
-                    onChange={(e) => setRegClassGroup(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-sm text-slate-700 placeholder-slate-400 focus:bg-white focus:ring-2 focus:ring-blue-100 focus:border-blue-500 outline-none transition-all"
-                  />
-                </div>
-
-                {/* Geofencing Location GPS Config */}
-                <div className="border-t border-slate-100 pt-3">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-1">
-                      <Compass className="w-4 h-4 text-blue-600" />
-                      <span className="text-xs font-bold text-slate-700 uppercase">GPS Geofence Boundary</span>
-                    </div>
-                    <span className="bg-blue-50 text-blue-600 text-[9px] font-extrabold px-2 py-0.5 rounded-full uppercase border border-blue-100">
-                      {regRadius}m Radius
-                    </span>
-                  </div>
-
-                  <div className="bg-slate-50/50 border border-slate-100 rounded-2xl p-3.5 space-y-2.5">
-                    <div className="flex items-center justify-between">
-                      <div className="text-[11px] text-slate-600">
-                        <span className="text-slate-400 font-bold block uppercase text-[8px]">Current Boundary:</span>
-                        <span className="font-mono font-semibold text-slate-700">
-                          {parseFloat(regLat || '1.6033').toFixed(4)}, {parseFloat(regLng || '110.3547').toFixed(4)}
-                        </span>
-                      </div>
-                      
-                      <button
-                        type="button"
-                        onClick={() => setShowCourseGpsModal(true)}
-                        className="bg-white hover:bg-blue-50 text-blue-600 border border-slate-200 hover:border-blue-150 py-1.5 px-3 rounded-xl text-[10px] font-bold shadow-2xs transition-all cursor-pointer hover:scale-105 active:scale-95 flex items-center gap-1"
-                      >
-                        📍 Configure GPS & Map
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Start Date & Hours Calculator */}
-                <div className="border-t border-slate-100 pt-4">
-                  <div className="flex items-center gap-1.5 mb-3">
-                    <Clock className="w-4.5 h-4.5 text-blue-600" />
-                    <span className="text-xs font-bold text-slate-700 uppercase">Syllabus & Hours Calculator</span>
-                  </div>
-
-                  <div className="space-y-4">
-                    <div>
-                      <label htmlFor="regStartDate" className="block text-xs font-bold text-slate-500 uppercase mb-1.5">First Class Start Date *</label>
-                      <input
-                        id="regStartDate"
-                        name="regStartDate"
-                        type="date"
-                        required
-                        value={regStartDate}
-                        onChange={(e) => setRegStartDate(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-sm text-slate-700 focus:bg-white focus:ring-2 focus:ring-blue-100 focus:border-blue-500 outline-none transition-all cursor-pointer"
-                      />
-                    </div>
-
-                    <div className="bg-blue-50/60 border border-blue-100/50 p-4 rounded-2xl space-y-3">
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label htmlFor="regTotalHours" className="block text-[10px] font-extrabold text-blue-700 uppercase mb-1.5">Total Contact Hours</label>
-                          <input
-                            id="regTotalHours"
-                            name="regTotalHours"
-                            type="number"
-                            required
-                            min="1"
-                            placeholder="e.g. 42"
-                            value={regTotalHours}
-                            onChange={(e) => handleTotalHoursChange(e.target.value)}
-                            className="w-full bg-white border border-blue-200/60 rounded-xl py-2 px-3 text-sm font-bold text-slate-800 outline-none focus:ring-2 focus:ring-blue-200 transition-all"
-                          />
-                        </div>
-
-                        <div>
-                          <label htmlFor="regHoursPerWeek" className="block text-[10px] font-extrabold text-blue-700 uppercase mb-1.5">Hours Per Week</label>
-                          <input
-                            id="regHoursPerWeek"
-                            name="regHoursPerWeek"
-                            type="number"
-                            required
-                            step="0.1"
-                            min="0.5"
-                            placeholder="e.g. 3"
-                            value={regHoursPerWeek}
-                            onChange={(e) => handleHoursPerWeekChange(e.target.value)}
-                            className="w-full bg-white border border-blue-200/60 rounded-xl py-2 px-3 text-sm font-bold text-slate-800 outline-none focus:ring-2 focus:ring-blue-200 transition-all"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="text-[10px] text-blue-600/80 font-semibold leading-relaxed flex items-start gap-1">
-                        <Info className="w-3.5 h-3.5 mt-0.5 shrink-0 text-blue-500" />
-                        <span>Calculated for a standard <strong>14-week</strong> Politeknik lecture semester. Setting either value will automatically solve the other.</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-5 border-t border-slate-100 bg-slate-50 flex gap-3 shrink-0 rounded-b-3xl">
-                <button
-                  type="button"
-                  onClick={() => setShowRegisterCourseModal(false)}
-                  className="flex-1 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 font-bold py-2.5 rounded-xl text-xs transition-all cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-xl text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5"
-                >
-                  <Plus className="w-4 h-4" /> Register Course
-                </button>
-              </div>
-            </form>
-          </motion.div>
-        </div>
-      )}
+      <RegisterCourseModal
+        show={showRegisterCourseModal}
+        editingCourse={editingCourseId ? courses.find(c => c.id === editingCourseId) || null : null}
+        onClose={handleCloseCourseModal}
+        onSave={(data) => {
+          if (editingCourseId) {
+            const isDuplicate = courses.some(
+              c => c.code.toLowerCase() === data.code?.toLowerCase() && c.id !== editingCourseId
+            );
+            if (isDuplicate) {
+              toast.error(`Course with code ${data.code} already exists!`);
+              return;
+            }
+            setCourses(courses.map(c =>
+              c.id === editingCourseId ? { ...c, ...data } : c
+            ));
+            api.updateCourse(editingCourseId, data).then(() => refreshData()).catch(() => {});
+            toast.success(`Course ${data.code} updated successfully!`);
+          } else {
+            if (courses.some(c => c.code.toLowerCase() === data.code?.toLowerCase())) {
+              toast.error(`Course with code ${data.code} is already registered!`);
+              return;
+            }
+            api.createCourse(data as any).then(() => refreshData()).catch(() => {});
+            toast.success(`Course ${data.code} registered successfully!`);
+          }
+          handleCloseCourseModal();
+        }}
+      />
 
       <VersionDisplay />
 
