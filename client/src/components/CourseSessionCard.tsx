@@ -28,36 +28,51 @@ export default function CourseSessionCard({
   const totalStudents = sessions.reduce((sum, s) => sum + (s.studentCount || 0), 0);
 
   const handleQuickAdd = () => {
-    const code = Math.floor(1000 + Math.random() * 9000).toString();
-    const newSess: AttendanceSession = {
-      id: `sess-${Date.now()}`,
-      courseId: course.id,
-      courseCode: course.code,
-      courseName: course.name,
-      classGroup: sessions[0]?.classGroup || '',
-      date: quickDate,
-      startTime: new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' }),
-      code,
-      status: 'active',
-      lecturerId: '',
-      studentCount: 0,
-      latitude: course.latitude,
-      longitude: course.longitude,
-      radius: course.radius,
-      week: parseInt(quickWeek),
-      hours: parseInt(quickHours),
-      deliveryMode: quickMode,
-    };
-    onSessionsChange([newSess, ...sessions]);
-    api.createSession({
-      courseId: newSess.courseId, courseCode: newSess.courseCode, courseName: newSess.courseName,
-      classGroup: newSess.classGroup, date: newSess.date, startTime: newSess.startTime,
-      code: newSess.code, latitude: newSess.latitude, longitude: newSess.longitude,
-      radius: newSess.radius, week: newSess.week, hours: newSess.hours, deliveryMode: newSess.deliveryMode,
-    }).catch(() => {});
+    const hoursPerSession = parseInt(quickHours) || 2;
+    const hoursPerWeek = course.hoursPerWeek || hoursPerSession;
+    const sessionsPerWeek = Math.max(1, Math.round(hoursPerWeek / hoursPerSession));
+    const splitLabels = ['A', 'B', 'C', 'D'];
+
+    const newSessions: AttendanceSession[] = Array.from({ length: sessionsPerWeek }, (_, s) => {
+      const code = Math.floor(1000 + Math.random() * 9000).toString();
+      return {
+        id: `sess-${Date.now()}-${s}`,
+        courseId: course.id,
+        courseCode: course.code,
+        courseName: course.name,
+        classGroup: sessions[0]?.classGroup || '',
+        date: quickDate,
+        startTime: s === 0
+          ? new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' })
+          : '10:30',
+        code,
+        status: s === 0 ? 'active' : 'inactive',
+        lecturerId: '',
+        studentCount: 0,
+        latitude: course.latitude,
+        longitude: course.longitude,
+        radius: course.radius,
+        week: parseInt(quickWeek),
+        hours: hoursPerSession,
+        deliveryMode: quickMode,
+      };
+    });
+
+    onSessionsChange([...newSessions, ...sessions]);
+    newSessions.forEach(sess =>
+      api.createSession({
+        courseId: sess.courseId, courseCode: sess.courseCode, courseName: sess.courseName,
+        classGroup: sess.classGroup, date: sess.date, startTime: sess.startTime,
+        code: sess.code, latitude: sess.latitude, longitude: sess.longitude,
+        radius: sess.radius, week: sess.week, hours: sess.hours, deliveryMode: sess.deliveryMode,
+      }).catch(() => {})
+    );
     setShowQuickAdd(false);
     setQuickWeek(String(Math.min(14, parseInt(quickWeek) + 1)));
-    toast.success(`Week ${quickWeek} added to ${course.code}! Code: ${code}`);
+    const splitNote = sessionsPerWeek > 1
+      ? ` (${sessionsPerWeek} split sessions, code A: ${newSessions[0].code})`
+      : ` Code: ${newSessions[0].code}`;
+    toast.success(`Week ${quickWeek} added to ${course.code}!${splitNote}`);
   };
 
   return (

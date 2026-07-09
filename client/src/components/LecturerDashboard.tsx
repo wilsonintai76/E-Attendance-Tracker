@@ -292,44 +292,52 @@ export default function LecturerDashboard() {
       const generatedSessions: AttendanceSession[] = [];
       const chosenWeekNum = parseInt(sessionWeek) || 1;
       const baseDate = new Date(sessionDate);
-      
+      const hoursPerSession = parseFloat(sessionHours) || 2;
+
+      // Determine how many sessions fill the week (e.g. 4h/week ÷ 2h = 2 sessions)
+      const selectedCourse = selectedCourseId ? courses.find(c => c.id === selectedCourseId) : null;
+      const hoursPerWeek = selectedCourse?.hoursPerWeek || hoursPerSession;
+      const sessionsPerWeek = Math.max(1, Math.round(hoursPerWeek / hoursPerSession));
+      const splitLabels = ['A', 'B', 'C', 'D'];
+
       for (let w = 1; w <= 14; w++) {
-        // Calculate the weekly offset date based on the chosen week number
         const offsetDays = (w - chosenWeekNum) * 7;
         const wDate = new Date(baseDate);
         wDate.setDate(baseDate.getDate() + offsetDays);
         const wDateString = wDate.toISOString().split('T')[0];
-        
-        // Generate a random 4-digit code for each week
-        const wCode = Math.floor(1000 + Math.random() * 9000).toString();
-        
-        const isCurrentActive = w === chosenWeekNum;
-        
-        generatedSessions.push({
-          id: `sess-${Date.now()}-${w}`,
-          courseId: selectedCourseId || '',
-          courseCode: courseCode.toUpperCase(),
-          courseName,
-          classGroup: classGroup.toUpperCase(),
-          date: wDateString,
-          startTime: isCurrentActive 
-            ? new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' })
-            : '08:30', // Default start time for non-active sessions
-          code: wCode,
-          status: isCurrentActive ? 'active' : 'inactive',
-          lecturerId: currentUser?.id || 'unknown',
-          studentCount: 0,
-          latitude: finalLat,
-          longitude: finalLng,
-          radius: finalRadius,
-          week: w,
-          hours: parseFloat(sessionHours) || undefined,
-          deliveryMode: deliveryMode
-        });
+
+        for (let s = 0; s < sessionsPerWeek; s++) {
+          const wCode = Math.floor(1000 + Math.random() * 9000).toString();
+          // Only the first split of the chosen week is immediately active
+          const isCurrentActive = w === chosenWeekNum && s === 0;
+          // Label week as "1A", "1B" when split, just "1" when single session
+          const weekLabel = sessionsPerWeek > 1 ? `${w}${splitLabels[s]}` : `${w}`;
+
+          generatedSessions.push({
+            id: `sess-${Date.now()}-${w}-${s}`,
+            courseId: selectedCourseId || '',
+            courseCode: courseCode.toUpperCase(),
+            courseName,
+            classGroup: classGroup.toUpperCase(),
+            date: wDateString,
+            startTime: isCurrentActive
+              ? new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' })
+              : '08:30',
+            code: wCode,
+            status: isCurrentActive ? 'active' : 'inactive',
+            lecturerId: currentUser?.id || 'unknown',
+            studentCount: 0,
+            latitude: finalLat,
+            longitude: finalLng,
+            radius: finalRadius,
+            week: w,
+            hours: hoursPerSession,
+            deliveryMode: deliveryMode,
+          });
+        }
       }
-      
+
       setSessions([...generatedSessions, ...sessions]);
-      // Persist all to D1, then refresh to get real IDs
       Promise.all(generatedSessions.map(s =>
         api.createSession({
           courseId: s.courseId,
@@ -348,9 +356,13 @@ export default function LecturerDashboard() {
         }).catch(() => {})
       )).then(() => refreshData()).catch(() => {});
       setShowCreateModal(false);
-      toast.success(`Generated 14 weekly sessions for ${courseCode.toUpperCase()}! Week ${chosenWeekNum} is active immediately with code: ${generatedSessions[chosenWeekNum - 1].code}`, {
-        duration: 8000
-      });
+      const totalCreated = 14 * sessionsPerWeek;
+      const splitNote = sessionsPerWeek > 1 ? ` (${sessionsPerWeek} sessions/week split)` : '';
+      const activeCode = generatedSessions.find(s => s.status === 'active')?.code || '';
+      toast.success(
+        `Generated ${totalCreated} sessions for ${courseCode.toUpperCase()}${splitNote}! Week ${chosenWeekNum} is active with code: ${activeCode}`,
+        { duration: 8000 }
+      );
     } else {
       const newSession: AttendanceSession = {
         id: `sess-${Date.now()}`,
