@@ -37,7 +37,7 @@ export default function LecturerDashboard() {
   const [regClassGroup, setRegClassGroup] = useState('');
   const [regLat, setRegLat] = useState('1.6033');
   const [regLng, setRegLng] = useState('110.3547');
-  const [regRadius, setRegRadius] = useState(50);
+  const [regRadius, setRegRadius] = useState(100);
   const [regStartDate, setRegStartDate] = useState(new Date().toISOString().split('T')[0]);
   const [regTotalHours, setRegTotalHours] = useState('42');
   const [regHoursPerWeek, setRegHoursPerWeek] = useState('3');
@@ -81,7 +81,7 @@ export default function LecturerDashboard() {
   const [useGeofencing, setUseGeofencing] = useState(true);
   const [latitude, setLatitude] = useState('1.6033'); // Default to JKM
   const [longitude, setLongitude] = useState('110.3547');
-  const [radius, setRadius] = useState(50); // Default 50 meters
+  const [radius, setRadius] = useState(100); // Default 100 meters
   const [isFetchingGPS, setIsFetchingGPS] = useState(false);
   const [selectedPreset, setSelectedPreset] = useState('');
 
@@ -875,7 +875,7 @@ export default function LecturerDashboard() {
                     setUseGeofencing(true);
                     setLatitude('1.6033');
                     setLongitude('110.3547');
-                    setRadius(50);
+                    setRadius(100);
                     setSessionDate(new Date().toISOString().split('T')[0]);
                     setSessionWeek('1');
                     setSessionHours('2');

@@ -249,8 +249,10 @@ export default function StudentDashboard() {
     ? calculateDistance(studentLat, studentLng, targetSession.latitude, targetSession.longitude)
     : null;
     
+  // Geofence check with GPS accuracy buffer: effective radius = configured radius + GPS accuracy
+  // This prevents false out-of-zone flags when GPS is imprecise (common on WiFi-based desktops)
   const isInsideGeofence = (computedDistance !== null && targetSession?.radius)
-    ? computedDistance <= targetSession.radius
+    ? computedDistance <= (targetSession.radius + (gpsAccuracy || 0))
     : true;
 
   // Monitor browser geolocation permissions
@@ -470,7 +472,7 @@ export default function StudentDashboard() {
       : null;
 
     const finalIsInside = (finalDistance !== null && targetSession?.radius)
-      ? finalDistance <= targetSession.radius
+      ? finalDistance <= (targetSession.radius + (gpsAccuracy || 0))
       : true;
 
     // Show warning confirmation if student is out-of-zone and it's NOT an online session
