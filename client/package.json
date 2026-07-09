@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "clsx": "^2.1.0",
+    "hono": "^4.12.28",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.400.0",
     "motion": "^12.0.0",
@@ -20,6 +21,7 @@
     "tailwind-merge": "^2.2.0"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260708.1",
     "@tailwindcss/vite": "^4.0.0",
     "@types/leaflet": "^1.9.21",
     "@types/react": "^19.0.0",
