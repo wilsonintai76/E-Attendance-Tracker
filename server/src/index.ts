@@ -1,0 +1,57 @@
+import { Hono } from 'hono';
+import { cors } from 'hono/cors';
+import auth from './routes/auth';
+import courses from './routes/courses';
+import sessions from './routes/sessions';
+import records from './routes/records';
+import alerts from './routes/alerts';
+import version from './routes/version';
+
+const app = new Hono<{ Bindings: Env }>();
+
+// CORS
+app.use('*', cors({
+  origin: ['http://localhost:3000', 'http://localhost:5173', 'https://e-attendance.pages.dev'],
+  allowHeaders: ['Content-Type', 'Authorization'],
+  allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  credentials: true,
+}));
+
+// Health check
+app.get('/api/health', (c) => c.json({ status: 'ok', timestamp: new Date().toISOString() }));
+
+// Storage upload endpoint (R2)
+app.put('/api/storage/upload/:key', async (c) => {
+  const key = decodeURIComponent(c.req.param('key'));
+  const body = await c.req.arrayBuffer();
+
+  await c.env.STORAGE.put(key, body, {
+    httpMetadata: { contentType: c.req.header('Content-Type') || 'application/octet-stream' },
+  });
+
+  return c.json({ success: true, key });
+});
+
+// Storage download endpoint (R2)
+app.get('/api/storage/download/:key', async (c) => {
+  const key = decodeURIComponent(c.req.param('key'));
+  const object = await c.env.STORAGE.get(key);
+
+  if (!object) {
+    return c.json({ error: 'File not found' }, 404);
+  }
+
+  c.header('Content-Type', object.httpMetadata?.contentType || 'application/octet-stream');
+  c.header('Cache-Control', 'public, max-age=3600');
+  return c.body(object.body);
+});
+
+// Mount routes
+app.route('/api/auth', auth);
+app.route('/api/courses', courses);
+app.route('/api/sessions', sessions);
+app.route('/api/records', records);
+app.route('/api/alerts', alerts);
+app.route('/api/version', version);
+
+export default app;

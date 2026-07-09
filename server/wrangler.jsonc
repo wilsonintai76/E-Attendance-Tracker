@@ -1,0 +1,31 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "e-attendance-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-07-08",
+  "compatibility_flags": ["nodejs_compat"],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "e-attendance-db",
+      "database_id": "2f4607b7-10f8-471c-8467-89fc0c7f6b57"
+    }
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "KV",
+      "id": "224eabe9a2cb4b9596a9d561152db4e7",
+      "remote": true
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "STORAGE",
+      "bucket_name": "e-attendance-storage",
+      "remote": true
+    }
+  ],
+  "observability": {
+    "enabled": true
+  }
+}

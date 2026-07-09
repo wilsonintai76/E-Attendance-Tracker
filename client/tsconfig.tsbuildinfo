@@ -1,0 +1,1 @@
+{"root":["./src/app.tsx","./src/main.tsx","./src/vite-env.d.ts","./src/components/lecturerdashboard.tsx","./src/components/loginscreen.tsx","./src/components/polikumap.tsx","./src/components/polikumapinner.tsx","./src/components/studentdashboard.tsx","./src/components/updatenotifier.tsx","./src/lib/api.ts","./src/lib/geoutils.ts","./src/lib/store.tsx"],"version":"5.9.3"}
