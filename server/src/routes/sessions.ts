@@ -3,11 +3,41 @@ import { authMiddleware, requirePolicy } from '../middleware/auth';
 
 const sessions = new Hono<{ Bindings: Env }>();
 
+// Helper: auto-transition sessions based on current week
+// - Active sessions before this Monday → inactive (past week)
+// - Inactive sessions within this week (Mon-Sun) → active (current week)
+async function autoTransitionInactive(db: D1Database) {
+  const today = new Date();
+  const dayOfWeek = today.getDay(); // 0=Sun, 1=Mon, ...
+  const daysSinceMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+  const monday = new Date(today);
+  monday.setDate(today.getDate() - daysSinceMonday);
+  monday.setHours(0, 0, 0, 0);
+  const mondayStr = monday.toISOString().split('T')[0];
+
+  const nextMonday = new Date(monday);
+  nextMonday.setDate(monday.getDate() + 7);
+  const nextMondayStr = nextMonday.toISOString().split('T')[0];
+
+  // 1. Active sessions whose date is before this Monday → mark inactive
+  await db.prepare(
+    `UPDATE attendance_sessions SET status = 'inactive'
+     WHERE status = 'active' AND date < ?`
+  ).bind(mondayStr).run();
+
+  // 2. Inactive sessions whose date falls within this week → mark active
+  await db.prepare(
+    `UPDATE attendance_sessions SET status = 'active'
+     WHERE status = 'inactive' AND date >= ? AND date < ?`
+  ).bind(mondayStr, nextMondayStr).run();
+}
+
 sessions.use('*', authMiddleware);
 
 // GET /api/sessions — list sessions (JOIN courses for code/name)
 sessions.get('/', async (c) => {
   const user = c.get('user')!;
+  await autoTransitionInactive(c.env.DB);
 
   if (user.role === 'lecturer') {
     const rows = await c.env.DB.prepare(
@@ -35,6 +65,7 @@ sessions.get('/', async (c) => {
 // GET /api/sessions/active — active sessions for enrolled courses
 sessions.get('/active', async (c) => {
   const user = c.get('user')!;
+  await autoTransitionInactive(c.env.DB);
 
   if (user.role === 'student') {
     const rows = await c.env.DB.prepare(
@@ -140,17 +171,6 @@ sessions.post('/:id/checkin', requirePolicy('canCheckIn'), async (c) => {
 
   const record = await c.env.DB.prepare('SELECT * FROM attendance_records WHERE id = ?').bind(recordId).first();
   return c.json({ record }, 201);
-});
-
-// POST /api/sessions/:id/complete — complete session (lecturer)
-sessions.post('/:id/complete', requirePolicy('canManageSessions'), async (c) => {
-  const id = c.req.param('id');
-  await c.env.DB.prepare(
-    "UPDATE attendance_sessions SET status = 'completed' WHERE id = ?"
-  ).bind(id).run();
-
-  const session = await c.env.DB.prepare('SELECT * FROM attendance_sessions WHERE id = ?').bind(id).first();
-  return c.json({ session });
 });
 
 // PUT /api/sessions/:id — update session (date, etc.)

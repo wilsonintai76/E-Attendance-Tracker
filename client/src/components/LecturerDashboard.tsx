@@ -316,7 +316,7 @@ export default function LecturerDashboard() {
             ? new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' })
             : '08:30', // Default start time for non-active sessions
           code: wCode,
-          status: isCurrentActive ? 'active' : 'completed', // 'completed' acts as inactive/scheduled initially
+          status: isCurrentActive ? 'active' : 'inactive',
           lecturerId: currentUser?.id || 'unknown',
           studentCount: 0,
           latitude: finalLat,
@@ -409,19 +409,6 @@ export default function LecturerDashboard() {
     setDeliveryMode('f2f');
   };
 
-  // Close active session
-  const handleCloseSession = (id: string) => {
-    const updated = sessions.map(s => {
-      if (s.id === id) {
-        return { ...s, status: 'completed' as const };
-      }
-      return s;
-    });
-    setSessions(updated);
-    api.completeSession(id).catch(() => {});
-    toast.success('Attendance session closed successfully.');
-  };
-
   // Edit session date
   const handleEditSession = (sess: AttendanceSession) => {
     setEditingSession(sess);
@@ -475,32 +462,6 @@ export default function LecturerDashboard() {
     } finally {
       setIsSubmittingBulk(false);
     }
-  };
-
-  // Open / activate an inactive/completed session
-  const handleOpenSession = (id: string) => {
-    const freshCode = Math.floor(1000 + Math.random() * 9000).toString();
-    const freshStartTime = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' });
-    
-    // Auto-update date to today's date so it registers today
-    const todayStr = new Date().toISOString().split('T')[0];
-
-    const updated = sessions.map(s => {
-      if (s.id === id) {
-        return { 
-          ...s, 
-          status: 'active' as const,
-          code: freshCode,
-          startTime: freshStartTime,
-          date: todayStr
-        };
-      }
-      return s;
-    });
-    setSessions(updated);
-    toast.success(`Class session opened! The fresh check-in code is: ${freshCode}`, {
-      duration: 6000
-    });
   };
 
   // Filter records
@@ -620,7 +581,7 @@ export default function LecturerDashboard() {
     // Loop courses
     courses.forEach(course => {
       // Find completed sessions for this course
-      const courseSessions = sessions.filter(s => s.courseCode === course.code && s.status === 'completed');
+      const courseSessions = sessions.filter(s => s.courseCode === course.code && s.status === 'inactive');
       if (courseSessions.length === 0) return; // If no sessions are completed yet, skip
 
       studentsToScan.forEach(student => {
@@ -1072,8 +1033,7 @@ export default function LecturerDashboard() {
                       <div className="flex items-center gap-2 shrink-0">
                         <span className="font-mono font-bold text-green-700 bg-white px-2 py-0.5 rounded text-[11px] border border-green-200">{sess.code}</span>
                         <span className="text-[10px] text-slate-400">{sess.studentCount || 0} ✓</span>
-                        <button onClick={() => handleCloseSession(sess.id)}
-                          className="bg-red-500 hover:bg-red-600 text-white font-bold text-[10px] px-3 py-1.5 rounded-lg cursor-pointer">Close</button>
+                        <span className="bg-green-100 text-green-700 text-[9px] font-bold px-2 py-1 rounded-full">ACTIVE</span>
                       </div>
                     </div>
                   ))}
@@ -1083,7 +1043,7 @@ export default function LecturerDashboard() {
 
             {/* Previous Weeks — Manual Attendance (collapsible) */}
             <PreviousWeeksPanel
-              sessions={sessions.filter(s => s.status === 'completed')}
+              sessions={sessions.filter(s => s.status === 'inactive')}
               onEditSession={handleEditSession}
               onBulkAttendance={handleOpenBulkAttendance}
             />
@@ -1129,8 +1089,6 @@ export default function LecturerDashboard() {
                   }}
                   onEditSession={handleEditSession}
                   onBulkAttendance={handleOpenBulkAttendance}
-                  onCloseSession={handleCloseSession}
-                  onOpenSession={handleOpenSession}
                 />
               ))
             )}

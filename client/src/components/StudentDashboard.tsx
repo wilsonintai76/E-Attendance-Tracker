@@ -635,7 +635,7 @@ export default function StudentDashboard() {
     const isForStudentClass = sess.classGroup.toUpperCase() === studentClassGroup;
     const isEnrolled = enrolledCourseCodes.includes(sess.courseCode.toUpperCase());
     const hasRecord = records.some(r => r.sessionId === sess.id && r.studentId === currentUser?.id);
-    return isForStudentClass && isEnrolled && !hasRecord && (sess.status === 'completed' || sess.status === 'active');
+    return isForStudentClass && isEnrolled && !hasRecord && (sess.status === 'inactive' || sess.status === 'active');
   });
 
   return (
@@ -980,7 +980,7 @@ export default function StudentDashboard() {
                       r => r.studentId === currentUser?.id && courseSessions.some(s => s.id === r.sessionId)
                     );
                     const totalSessions = courseSessions.filter(
-                      s => s.status === 'completed' || s.status === 'active'
+                      s => s.status === 'inactive' || s.status === 'active'
                     ).length;
                     const presentCount = courseRecords.filter(
                       r => r.status === 'present' || r.status === 'late' || r.approvalStatus === 'approved'

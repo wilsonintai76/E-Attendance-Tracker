@@ -47,7 +47,7 @@ CREATE TABLE IF NOT EXISTS attendance_sessions (
   date TEXT NOT NULL,
   start_time TEXT NOT NULL,
   code TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'completed')),
+  status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'inactive')),
   lecturer_id TEXT NOT NULL REFERENCES users(id),
   student_count INTEGER DEFAULT 0,
   latitude REAL,

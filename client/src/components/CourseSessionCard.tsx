@@ -10,13 +10,10 @@ interface Props {
   onSessionsChange: (sessions: AttendanceSession[]) => void;
   onEditSession: (sess: AttendanceSession) => void;
   onBulkAttendance: (sess: AttendanceSession) => void;
-  onCloseSession: (id: string) => void;
-  onOpenSession: (id: string) => void;
 }
 
 export default function CourseSessionCard({
   course, sessions, onSessionsChange, onEditSession, onBulkAttendance,
-  onCloseSession, onOpenSession,
 }: Props) {
   const [showQuickAdd, setShowQuickAdd] = useState(false);
   const [quickWeek, setQuickWeek] = useState(() => {
@@ -113,19 +110,15 @@ export default function CourseSessionCard({
               <div className="flex items-center gap-1 shrink-0 ml-2">
                 <span className="text-[10px] text-slate-400 w-8 text-right">{sess.studentCount || 0}</span>
                 {sess.status === 'active' ? (
-                  <button onClick={() => onCloseSession(sess.id)}
-                    className="text-red-500 hover:bg-red-50 px-1.5 py-0.5 rounded text-[10px] font-bold cursor-pointer">
-                    Close
-                  </button>
+                  <span className="bg-green-100 text-green-700 text-[9px] font-bold px-2 py-0.5 rounded-full">ACTIVE</span>
                 ) : (
-                  <>
+                  <span className="flex items-center gap-1">
+                    <span className="bg-slate-200 text-slate-500 text-[9px] font-bold px-2 py-0.5 rounded-full">INACTIVE</span>
                     <button onClick={() => onEditSession(sess)}
                       className="text-slate-400 hover:text-blue-500 px-1 py-0.5 rounded text-[10px] cursor-pointer" title="Edit date">✏️</button>
                     <button onClick={() => onBulkAttendance(sess)}
                       className="text-slate-400 hover:text-amber-500 px-1 py-0.5 rounded text-[10px] cursor-pointer" title="Attendance">✅</button>
-                    <button onClick={() => onOpenSession(sess.id)}
-                      className="text-emerald-600 hover:bg-emerald-50 px-1.5 py-0.5 rounded text-[10px] font-bold cursor-pointer">Reopen</button>
-                  </>
+                  </span>
                 )}
               </div>
             </div>

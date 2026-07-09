@@ -26,7 +26,7 @@ export interface AttendanceSession {
   date: string;
   startTime: string;
   code: string;
-  status: 'active' | 'completed';
+  status: 'active' | 'inactive';
   lecturerId: string;
   studentCount: number;
   latitude?: number;
@@ -242,13 +242,6 @@ export async function checkInSession(sessionId: string, checkIn: {
     method: 'POST', body: JSON.stringify(checkIn),
   });
   return normalizeObject<AttendanceRecord>(data.record);
-}
-
-export async function completeSession(sessionId: string) {
-  const data = await apiFetch<{ session: Record<string, unknown> }>(`/sessions/${sessionId}/complete`, {
-    method: 'POST',
-  });
-  return normalizeObject<AttendanceSession>(data.session);
 }
 
 export async function updateSession(sessionId: string, updates: { date?: string }) {
