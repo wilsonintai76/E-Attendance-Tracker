@@ -12,6 +12,7 @@ import * as api from '../lib/api';
 import { POLIKU_PRESETS, getCurrentCoordinates } from '../lib/geoUtils';
 import PolikuMap from './PolikuMap';
 import CourseSessionCard from './CourseSessionCard';
+import PreviousWeeksPanel from './PreviousWeeksPanel';
 import VersionDisplay from './VersionDisplay';
 
 export default function LecturerDashboard() {
@@ -1026,57 +1027,47 @@ export default function LecturerDashboard() {
               );
             })()}
 
-            {/* Live Active Sessions Quick Overview (on Dashboard) */}
+            {/* Live Active Sessions — current week only */}
             {sessions.filter(s => s.status === 'active').length > 0 && (
-              <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-sm animate-fade-in">
+              <div className="bg-white border border-green-100 rounded-3xl p-6 shadow-sm">
                 <div className="flex justify-between items-center mb-4">
                   <h4 className="font-bold text-slate-800 text-sm flex items-center gap-1.5">
-                    <Clock className="w-4.5 h-4.5 text-green-500 animate-pulse animate-duration-1000" /> Currently Active Sessions
+                    <Clock className="w-4.5 h-4.5 text-green-500 animate-pulse" /> Live Sessions — Current Week
                   </h4>
-                  <button 
-                    onClick={() => setActiveTab('sessions')}
-                    className="text-xs text-blue-600 font-bold hover:underline"
-                  >
-                    View All Sessions &rarr;
-                  </button>
+                  <button onClick={() => setActiveTab('sessions')}
+                    className="text-xs text-blue-600 font-bold hover:underline">All Sessions →</button>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="space-y-2">
                   {sessions.filter(s => s.status === 'active').map(sess => (
-                    <div key={sess.id} className="border border-green-100 bg-green-50/20 rounded-2xl p-4 flex flex-col justify-between gap-3 shadow-2xs">
-                      <div>
-                        <div className="flex justify-between items-center mb-1">
-                          <span className="text-[9px] font-black bg-green-100 text-green-700 px-2 py-0.5 rounded-md">
-                            {sess.courseCode}
-                          </span>
-                          <div className="flex items-center gap-1">
-                            {sess.deliveryMode === 'online' ? (
-                              <span className="text-[8px] font-black bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded flex items-center gap-0.5">
-                                <Globe className="w-2 h-2" /> ONLINE
-                              </span>
-                            ) : (
-                              <span className="text-[8px] font-black bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded flex items-center gap-0.5">
-                                <Users className="w-2 h-2" /> F2F
-                              </span>
-                            )}
-                            <span className="text-[10px] font-bold text-blue-600 bg-blue-50/50 px-2 py-0.5 rounded-md">Week {sess.week || 1}</span>
-                          </div>
-                        </div>
-                        <h5 className="font-bold text-slate-800 text-xs line-clamp-1">{sess.courseName}</h5>
-                        <p className="text-[10px] text-slate-500 mt-1">
-                          Code: <strong className="text-slate-800 font-mono text-[11px] bg-white border border-slate-200 px-1 rounded-sm">{sess.code}</strong> • {sess.studentCount} checked-in
-                        </p>
+                    <div key={sess.id} className="flex items-center justify-between bg-green-50/30 border border-green-100 rounded-2xl px-4 py-3">
+                      <div className="flex items-center gap-3 flex-1 min-w-0">
+                        <span className="font-extrabold text-xs text-blue-600 w-16 shrink-0">{sess.courseCode}</span>
+                        <span className="text-xs font-bold text-slate-700 w-16 shrink-0">Week {sess.week || '?'}</span>
+                        <span className="text-xs text-slate-500 hidden sm:inline truncate">{sess.courseName}</span>
+                        {sess.deliveryMode === 'online' ? (
+                          <span className="text-[9px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded font-bold shrink-0">ONLINE</span>
+                        ) : (
+                          <span className="text-[9px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-bold shrink-0">F2F</span>
+                        )}
                       </div>
-                      <button
-                        onClick={() => handleCloseSession(sess.id)}
-                        className="w-full bg-red-600 hover:bg-red-700 text-white font-bold text-[10px] py-1.5 rounded-lg transition-all shadow-2xs cursor-pointer text-center"
-                      >
-                        Close Session
-                      </button>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="font-mono font-bold text-green-700 bg-white px-2 py-0.5 rounded text-[11px] border border-green-200">{sess.code}</span>
+                        <span className="text-[10px] text-slate-400">{sess.studentCount || 0} ✓</span>
+                        <button onClick={() => handleCloseSession(sess.id)}
+                          className="bg-red-500 hover:bg-red-600 text-white font-bold text-[10px] px-3 py-1.5 rounded-lg cursor-pointer">Close</button>
+                      </div>
                     </div>
                   ))}
                 </div>
               </div>
             )}
+
+            {/* Previous Weeks — Manual Attendance (collapsible) */}
+            <PreviousWeeksPanel
+              sessions={sessions.filter(s => s.status === 'completed')}
+              onEditSession={handleEditSession}
+              onBulkAttendance={handleOpenBulkAttendance}
+            />
 
             {/* Info Card on Geofencing & Contact Hours */}
             <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-sm">
