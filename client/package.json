@@ -1,12 +1,14 @@
 {
   "name": "e-attendance-client",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "deploy:frontend": "vite build && wrangler pages deploy dist --project-name e-attendance --branch main --commit-dirty=true",
+    "deploy:all": "npm run build && wrangler pages deploy dist --project-name e-attendance --branch main --commit-dirty=true && cd ../server && wrangler deploy"
   },
   "dependencies": {
     "clsx": "^2.1.0",

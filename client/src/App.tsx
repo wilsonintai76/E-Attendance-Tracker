@@ -3,6 +3,8 @@ import { useAppStore } from './lib/store';
 import LoginScreen from './components/LoginScreen';
 import LecturerDashboard from './components/LecturerDashboard';
 import StudentDashboard from './components/StudentDashboard';
+import UpdateNotifier from './components/UpdateNotifier';
+import VersionDisplay from './components/VersionDisplay';
 
 export default function App() {
   const { isLoggedIn, isLoading, currentUser } = useAppStore();
@@ -22,12 +24,12 @@ export default function App() {
   }
 
   if (!isLoggedIn || !currentUser) {
-    return <LoginScreen />;
+    return <><UpdateNotifier /><LoginScreen /><VersionDisplay /></>;
   }
 
   if (currentUser.role === 'lecturer') {
-    return <LecturerDashboard />;
+    return <><UpdateNotifier /><LecturerDashboard /><VersionDisplay /></>;
   }
 
-  return <StudentDashboard />;
+  return <><UpdateNotifier /><StudentDashboard /><VersionDisplay /></>;
 }
