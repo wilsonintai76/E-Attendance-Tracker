@@ -31,33 +31,37 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return !!localStorage.getItem('e_attendance_token');
   });
   const [isLoading, setIsLoading] = useState(false);
-  const [currentUser, setCurrentUserState] = useState<User | null>(() => {
-    const stored = localStorage.getItem('e_attendance_user');
-    return stored ? JSON.parse(stored) : null;
-  });
+  const [currentUser, setCurrentUserState] = useState<User | null>(null);
 
   const [sessions, setSessions] = useState<AttendanceSession[]>([]);
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [courses, setCoursesState] = useState<Course[]>([]);
   const [alerts, setAlerts] = useState<AttendanceAlert[]>([]);
 
-  // Refresh all data from the API
+  // Refresh all data from the API (sole D1 source — no localStorage data)
   const refreshData = useCallback(async () => {
-    if (!isLoggedIn) return;
+    if (!isLoggedIn || !api.getToken()) return;
     setIsLoading(true);
     try {
-      const [coursesData, sessionsData, recordsData, alertsData] = await Promise.all([
+      const [userData, coursesData, sessionsData, recordsData, alertsData] = await Promise.all([
+        api.getMe(),
         api.fetchCourses(),
         api.fetchSessions(),
         api.fetchRecords(),
         api.fetchAlerts(),
       ]);
+      setCurrentUserState(userData);
       setCoursesState(coursesData);
       setSessions(sessionsData);
       setRecords(recordsData);
       setAlerts(alertsData);
     } catch (err) {
       console.error('Failed to refresh data:', err);
+      // Token might be invalid — force logout
+      if (err instanceof Error && (err.message.includes('401') || err.message.includes('Unauthorized'))) {
+        api.setToken(null);
+        setIsLoggedIn(false);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -72,11 +76,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const setCurrentUser = (user: User | null) => {
     setCurrentUserState(user);
-    if (user) {
-      localStorage.setItem('e_attendance_user', JSON.stringify(user));
-    } else {
-      localStorage.removeItem('e_attendance_user');
-    }
   };
 
   const loginState = (state: boolean) => {
@@ -105,6 +104,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     api.setToken(null);
     localStorage.removeItem('e_attendance_token');
     localStorage.removeItem('e_attendance_user');
+    localStorage.removeItem('e_attendance_version');
     setSessions([]);
     setRecords([]);
     setCoursesState([]);

@@ -63,7 +63,8 @@ export default function StudentDashboard() {
       return;
     }
 
-    const activeSessions = sessions.filter(s => s.status === 'active' && s.classGroup === currentUser.classGroup);
+    const enrolledCourseIds = currentUser?.enrolledCourses || [];
+    const activeSessions = sessions.filter(s => s.status === 'active' && enrolledCourseIds.includes(s.courseId));
     const newActiveSessions = activeSessions.filter(activeSess => {
       const prevSess = prevSessionsRef.current.find(p => p.id === activeSess.id);
       return !prevSess || prevSess.status !== 'active';
@@ -140,30 +141,37 @@ export default function StudentDashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showScannerModal, scannerMode]);
 
-  const handleEnrollInCourse = (courseId: string) => {
+  const handleEnrollInCourse = async (courseId: string) => {
     if (!currentUser) return;
     
-    const enrolledCourseIds = currentUser.enrolledCourses || ['course-1'];
-    
+    const enrolledCourseIds = currentUser.enrolledCourses || [];
     if (enrolledCourseIds.includes(courseId)) {
       toast.info('Anda sudah pun berdaftar untuk kursus ini!');
       return;
     }
 
-    const courseToEnroll = courses.find(c => c.id === courseId);
-    if (!courseToEnroll) {
-      toast.error('Kursus tidak dijumpai di dalam sistem.');
-      return;
-    }
+    const courseToEnroll = allCourses.find(c => c.id === courseId) || courses.find(c => c.id === courseId);
+    const courseName = courseToEnroll ? `${courseToEnroll.code} - ${courseToEnroll.name}` : 'kursus';
 
-    const updatedUser = {
-      ...currentUser,
-      enrolledCourses: [...enrolledCourseIds, courseId]
-    };
-
+    // Optimistic update
+    const updatedUser = { ...currentUser, enrolledCourses: [...enrolledCourseIds, courseId] };
     setCurrentUser(updatedUser);
-    api.enrollInCourse(courseId).catch(() => {});
-    toast.success(`Berjaya mendaftar! Anda telah didaftarkan ke kursus ${courseToEnroll.code} - ${courseToEnroll.name}.`);
+
+    try {
+      await api.enrollInCourse(courseId);
+      toast.success(`Berjaya mendaftar ke ${courseName}!`);
+      // Refresh to sync with server
+      setShowScannerModal(false);
+      refreshData();
+    } catch (err: any) {
+      // Revert on 409 (already enrolled) or other errors
+      setCurrentUser(currentUser);
+      if (err.message?.includes('409') || err.message?.includes('Already')) {
+        toast.info('Anda sudah pun berdaftar untuk kursus ini!');
+      } else {
+        toast.error('Gagal mendaftar kursus.');
+      }
+    }
   };
 
   const handleManualEnroll = async (e: React.FormEvent) => {
@@ -226,7 +234,7 @@ export default function StudentDashboard() {
   const [permissionState, setPermissionState] = useState<PermissionState | 'unsupported' | 'checking' | null>('checking');
 
   // Course Enrollment calculations
-  const enrolledCourseIds = currentUser?.enrolledCourses || ['course-1'];
+  const enrolledCourseIds = currentUser?.enrolledCourses || [];
   const enrolledCourses = courses.filter(c => enrolledCourseIds.includes(c.id));
   const enrolledCourseCodes = enrolledCourses.map(c => c.code.toUpperCase());
 
@@ -1901,7 +1909,7 @@ export default function StudentDashboard() {
 
 
 
-      {/* MODAL: Daftar Kursus — available courses + manual code */}
+      {/* MODAL: Daftar Kursus ï¿½ available courses + manual code */}
       {showScannerModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
           <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
@@ -1912,7 +1920,7 @@ export default function StudentDashboard() {
                 <p className="text-[10px] text-slate-400 mt-0.5">Pilih kursus atau masukkan kod manual</p>
               </div>
               <button onClick={() => { setShowScannerModal(false); setManualCourseCode(''); }}
-                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center font-bold cursor-pointer">×</button>
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center font-bold cursor-pointer">ï¿½</button>
             </div>
             <div className="overflow-y-auto p-5 space-y-4">
               <form onSubmit={handleManualEnroll} className="flex gap-2">
@@ -1936,7 +1944,7 @@ export default function StudentDashboard() {
                       <button key={course.id} onClick={() => handleEnrollInCourse(course.id)}
                         className="w-full flex items-center justify-between p-3 border border-slate-100 hover:border-blue-200 rounded-xl text-left text-xs cursor-pointer hover:bg-blue-50/30 transition-all">
                         <div className="min-w-0">
-                          <p className="font-bold text-slate-800">{course.code} — {course.name}</p>
+                          <p className="font-bold text-slate-800">{course.code} ï¿½ {course.name}</p>
                           <p className="text-[10px] text-slate-400">{course.location}</p>
                         </div>
                         <span className="bg-blue-600 text-white font-bold text-[10px] px-3 py-1 rounded-lg shrink-0 ml-2">Daftar</span>

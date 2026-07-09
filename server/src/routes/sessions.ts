@@ -19,19 +19,15 @@ sessions.get('/', async (c) => {
     ).bind(user.id).all();
     return c.json({ sessions: rows.results });
   } else {
-    const student = await c.env.DB.prepare(
-      'SELECT class_group FROM users WHERE id = ?'
-    ).bind(user.id).first<{ class_group: string }>();
-    const classGroup = student?.class_group || '';
-
+    // Students: all sessions for enrolled courses (no class_group filter)
     const rows = await c.env.DB.prepare(
       `SELECT s.*, c.code AS course_code, c.name AS course_name
        FROM attendance_sessions s
        JOIN courses c ON s.course_id = c.id
        INNER JOIN course_enrollments ce ON s.course_id = ce.course_id
-       WHERE ce.student_id = ? AND (s.class_group = ? OR s.class_group = '')
+       WHERE ce.student_id = ?
        ORDER BY s.created_at DESC`
-    ).bind(user.id, classGroup).all();
+    ).bind(user.id).all();
     return c.json({ sessions: rows.results });
   }
 });
@@ -39,23 +35,26 @@ sessions.get('/', async (c) => {
 // GET /api/sessions/active — active sessions for enrolled courses
 sessions.get('/active', async (c) => {
   const user = c.get('user')!;
-  const classGroup = c.req.query('classGroup') || '';
 
-  const query = user.role === 'student'
-    ? `SELECT s.*, c.code AS course_code, c.name AS course_name
+  if (user.role === 'student') {
+    const rows = await c.env.DB.prepare(
+      `SELECT s.*, c.code AS course_code, c.name AS course_name
        FROM attendance_sessions s
        JOIN courses c ON s.course_id = c.id
        INNER JOIN course_enrollments ce ON s.course_id = ce.course_id
-       WHERE s.status = 'active' AND ce.student_id = ? AND (s.class_group = ? OR s.class_group = '')
+       WHERE s.status = 'active' AND ce.student_id = ?
        ORDER BY s.created_at DESC`
-    : `SELECT s.*, c.code AS course_code, c.name AS course_name
-       FROM attendance_sessions s
-       JOIN courses c ON s.course_id = c.id
-       WHERE s.status = 'active' AND s.class_group = ?
-       ORDER BY s.created_at DESC`;
+    ).bind(user.id).all();
+    return c.json({ sessions: rows.results });
+  }
 
-  const rows = await c.env.DB.prepare(query)
-    .bind(...(user.role === 'student' ? [user.id, classGroup] : [classGroup])).all();
+  const classGroup = c.req.query('classGroup') || '';
+  const rows = await c.env.DB.prepare(
+    `SELECT s.*, c.code AS course_code, c.name AS course_name
+     FROM attendance_sessions s JOIN courses c ON s.course_id = c.id
+     WHERE s.status = 'active' AND s.class_group = ?
+     ORDER BY s.created_at DESC`
+  ).bind(classGroup).all();
   return c.json({ sessions: rows.results });
 });
 
