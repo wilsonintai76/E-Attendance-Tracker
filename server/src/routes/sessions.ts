@@ -209,21 +209,21 @@ sessions.put('/:id', requirePolicy('canManageSessions'), async (c) => {
 // GET /api/sessions/:id/students — enrolled students for the session's course
 sessions.get('/:id/students', requirePolicy('canManageSessions'), async (c) => {
   const id = c.req.param('id');
-  const session = await c.env.DB.prepare('SELECT course_id, class_group FROM attendance_sessions WHERE id = ?').bind(id).first<{
-    course_id: string; class_group: string;
+  const session = await c.env.DB.prepare('SELECT course_id FROM attendance_sessions WHERE id = ?').bind(id).first<{
+    course_id: string;
   }>();
   if (!session) return c.json({ error: 'Session not found' }, 404);
 
-  // Get enrolled students for this course matching the class group
+  // Get ALL enrolled students for this course (no class_group filter)
   const students = await c.env.DB.prepare(
     `SELECT u.id, u.name, u.email, u.matric_no, u.class_group,
      COALESCE(ar.status, 'absent') AS record_status, ar.id AS record_id
      FROM users u
      INNER JOIN course_enrollments ce ON u.id = ce.student_id
      LEFT JOIN attendance_records ar ON ar.session_id = ? AND ar.student_id = u.id
-     WHERE ce.course_id = ? AND u.class_group = ?
+     WHERE ce.course_id = ?
      ORDER BY u.name`
-  ).bind(id, session.course_id, session.class_group).all();
+  ).bind(id, session.course_id).all();
   return c.json({ students: students.results });
 });
 
@@ -233,17 +233,17 @@ sessions.post('/:id/bulk-attendance', requirePolicy('canManageSessions'), async 
   const body = await c.req.json<{ absentIds: string[] }>();
 
   const session = await c.env.DB.prepare(
-    'SELECT id, course_id, class_group FROM attendance_sessions WHERE id = ?'
-  ).bind(id).first<{ id: string; course_id: string; class_group: string }>();
+    'SELECT id, course_id FROM attendance_sessions WHERE id = ?'
+  ).bind(id).first<{ id: string; course_id: string }>();
   if (!session) return c.json({ error: 'Session not found' }, 404);
 
-  // Fetch ALL enrolled students for this course + class group
+  // Fetch ALL enrolled students for this course (no class_group filter)
   const enrolled = await c.env.DB.prepare(
     `SELECT u.id FROM users u
      INNER JOIN course_enrollments ce ON u.id = ce.student_id
-     WHERE ce.course_id = ? AND u.class_group = ?
+     WHERE ce.course_id = ?
      ORDER BY u.name`
-  ).bind(session.course_id, session.class_group).all<{ id: string }>();
+  ).bind(session.course_id).all<{ id: string }>();
 
   const absentSet = new Set(body.absentIds);
   const timestamp = new Date().toISOString();
