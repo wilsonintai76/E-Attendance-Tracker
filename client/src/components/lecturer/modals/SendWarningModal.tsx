@@ -48,7 +48,7 @@ export default function SendWarningModal({
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-100 flex items-center justify-center p-4">
       <div 
         className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity" 
         onClick={onClose}
@@ -144,7 +144,7 @@ export default function SendWarningModal({
             <button
               type="submit"
               disabled={isSending}
-              className="flex-[2] py-3 px-4 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white font-black rounded-xl shadow-[0_4px_12px_rgba(245,158,11,0.2)] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              className="flex-2 py-3 px-4 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white font-black rounded-xl shadow-[0_4px_12px_rgba(245,158,11,0.2)] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               {isSending ? (
                 <>Menghantar...</>

@@ -24,7 +24,7 @@ export default function PreviousWeeksPanel({ sessions, onEditSession, onBulkAtte
         <span className="text-slate-400 text-lg">{show ? '▾' : '▸'}</span>
       </button>
       {show && (
-        <div className="mt-4 space-y-1.5 max-h-[400px] overflow-y-auto">
+        <div className="mt-4 space-y-1.5 max-h-100 overflow-y-auto">
           {sessions.map(sess => (
             <div key={sess.id} className="flex items-center justify-between bg-slate-50 border border-slate-100 rounded-xl px-3 py-2 text-xs">
               <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -35,9 +35,9 @@ export default function PreviousWeeksPanel({ sessions, onEditSession, onBulkAtte
               </div>
               <div className="flex gap-1 shrink-0">
                 <button onClick={() => onEditSession(sess)}
-                  className="text-slate-400 hover:text-blue-500 px-1.5 py-0.5 text-[10px] cursor-pointer" title="Edit date">✏️</button>
+                  className="text-slate-400 hover:text-blue-500 px-2 py-1.5 text-xs cursor-pointer rounded-lg hover:bg-blue-50" title="Edit date">✏️</button>
                 <button onClick={() => onBulkAttendance(sess)}
-                  className="bg-amber-100 hover:bg-amber-200 text-amber-700 font-bold px-2 py-1 rounded text-[10px] cursor-pointer">Mark Present</button>
+                  className="bg-amber-100 hover:bg-amber-200 text-amber-700 font-bold px-2.5 py-1.5 rounded-lg text-xs cursor-pointer">Mark Present</button>
               </div>
             </div>
           ))}

@@ -47,7 +47,13 @@ export default function LoginScreen() {
 
   // Load Google Identity Services script
   useEffect(() => {
-    if (document.getElementById('google-gsi-script')) return;
+    // If script already loaded, check if API is ready
+    if (document.getElementById('google-gsi-script')) {
+      if (window.google?.accounts) {
+        setGsiReady(true);
+      }
+      return;
+    }
     const script = document.createElement('script');
     script.id = 'google-gsi-script';
     script.src = 'https://accounts.google.com/gsi/client';
@@ -60,6 +66,9 @@ export default function LoginScreen() {
   // Render Google Sign-In button once GSI is loaded
   useEffect(() => {
     if (!gsiReady || !buttonRef.current || !window.google) return;
+
+    // Cancel any stale one-tap prompts from previous session
+    window.google.accounts.id.cancel();
 
     window.google.accounts.id.initialize({
       client_id: GOOGLE_CLIENT_ID,

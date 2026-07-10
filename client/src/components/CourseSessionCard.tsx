@@ -106,7 +106,7 @@ export default function CourseSessionCard({
           No sessions yet. Add your first week below.
         </p>
       ) : (
-        <div className="space-y-1.5 mb-3 max-h-[300px] overflow-y-auto">
+        <div className="space-y-1.5 mb-3 max-h-75 overflow-y-auto">
           {sessions.map((sess) => (
             <div key={sess.id} className={`flex items-center justify-between px-3 py-2 rounded-xl text-xs ${
               sess.status === 'active' ? 'bg-blue-50 border border-blue-100' : 'bg-slate-50 border border-slate-100'
@@ -131,9 +131,9 @@ export default function CourseSessionCard({
                 )}
                 <span className="flex items-center gap-1">
                   <button onClick={() => onEditSession(sess)}
-                    className="text-slate-400 hover:text-blue-500 px-1 py-0.5 rounded text-[10px] cursor-pointer" title="Edit date">✏️</button>
+                    className="text-slate-400 hover:text-blue-500 px-2 py-1.5 rounded-lg text-xs cursor-pointer hover:bg-blue-50" title="Edit date">✏️</button>
                   <button onClick={() => onBulkAttendance(sess)}
-                    className="text-slate-400 hover:text-amber-500 px-1 py-0.5 rounded text-[10px] cursor-pointer" title="Attendance">✅</button>
+                    className="text-slate-400 hover:text-amber-500 px-2 py-1.5 rounded-lg text-xs cursor-pointer hover:bg-amber-50" title="Attendance">✅</button>
                 </span>
               </div>
             </div>
@@ -174,9 +174,9 @@ export default function CourseSessionCard({
           </div>
           <div className="flex gap-2">
             <button onClick={() => setShowQuickAdd(false)}
-              className="flex-1 border border-slate-200 text-slate-500 py-1.5 rounded-lg text-[10px] font-bold cursor-pointer">Cancel</button>
+              className="flex-1 border border-slate-200 text-slate-500 py-2 rounded-lg text-xs font-bold cursor-pointer">Cancel</button>
             <button onClick={handleQuickAdd}
-              className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-1.5 rounded-lg text-[10px] font-bold cursor-pointer">Start Session</button>
+              className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg text-xs font-bold cursor-pointer">Start Session</button>
           </div>
         </div>
       ) : (

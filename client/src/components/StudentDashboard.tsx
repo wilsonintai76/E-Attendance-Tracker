@@ -705,7 +705,7 @@ export default function StudentDashboard() {
 
               {/* Notification Tray Dropdown */}
               {showNotifications && (
-                <div className="absolute right-0 mt-2.5 w-80 bg-white border border-slate-100 rounded-2xl shadow-xl z-50 p-4 max-h-100 overflow-y-auto animate-fade-in">
+                <div className="absolute right-0 mt-2.5 w-80 max-w-[calc(100vw-2rem)] bg-white border border-slate-100 rounded-2xl shadow-xl z-50 p-4 max-h-100 overflow-y-auto animate-fade-in">
                   <div className="flex justify-between items-center border-b border-slate-100 pb-2 mb-3">
                     
                     <span className="text-xs font-extrabold text-slate-700 uppercase">Notifikasi & Amaran ({myAlerts.length})</span>

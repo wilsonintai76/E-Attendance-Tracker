@@ -118,7 +118,7 @@ export default function ManageStudentsModal({ courseId, courseCode, courseName, 
                   <button
                     onClick={() => handleRemoveStudent(student)}
                     disabled={removingId === student.id}
-                    className="shrink-0 ml-2 text-red-400 hover:text-red-600 hover:bg-red-50 disabled:opacity-50 font-bold text-[10px] py-1.5 px-3 rounded-lg transition-all cursor-pointer flex items-center gap-1 border border-transparent hover:border-red-100"
+                    className="shrink-0 ml-2 text-red-400 hover:text-red-600 hover:bg-red-50 disabled:opacity-50 font-bold text-xs py-2 px-3 rounded-lg transition-all cursor-pointer flex items-center gap-1 border border-transparent hover:border-red-100"
                     title="Keluarkan pelajar"
                   >
                     {removingId === student.id ? (
