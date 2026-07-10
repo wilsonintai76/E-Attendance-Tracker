@@ -4,7 +4,7 @@ import {
   LogOut, ShieldCheck, CheckCircle2, Award, ClipboardCheck, 
   MapPin, HelpCircle, Save, ArrowRight, BookOpen, Clock,
   Navigation, Compass, AlertTriangle, Info, Check, User,
-  Activity, Wifi, Bell, QrCode, Camera, Globe, Users
+  Activity, Wifi, Bell, QrCode, Camera, Globe, Users, Download, XCircle
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { toast } from 'sonner';
@@ -175,6 +175,26 @@ export default function StudentDashboard() {
       } else {
         toast.error('Gagal mendaftar kursus.');
       }
+    }
+  };
+
+  const handleLeaveCourse = async (courseId: string, courseCode: string) => {
+    if (!currentUser) return;
+    if (!confirm(`Adakah anda pasti mahu keluar dari kursus ${courseCode}? Tindakan ini tidak akan memadam rekod kehadiran lepas.`)) return;
+
+    const enrolledCourseIds = currentUser.enrolledCourses || [];
+    // Optimistic update
+    const updatedUser = { ...currentUser, enrolledCourses: enrolledCourseIds.filter(id => id !== courseId) };
+    setCurrentUser(updatedUser);
+
+    try {
+      await api.unenrollFromCourse(courseId);
+      toast.success(`Anda telah keluar dari kursus ${courseCode}.`);
+      refreshData();
+    } catch (err: any) {
+      // Revert on failure
+      setCurrentUser(currentUser);
+      toast.error('Gagal keluar dari kursus. Sila cuba lagi.');
     }
   };
 
@@ -746,6 +766,21 @@ export default function StudentDashboard() {
                             {alert.message}
                           </p>
 
+                          {alert.spmpLetterUrl && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                toast.info('Memuat turun surat SPMP...');
+                                api.downloadStorageFile(alert.spmpLetterUrl!, alert.spmpLetterName || 'Surat_Amaran.pdf')
+                                  .catch(() => toast.error('Gagal memuat turun surat SPMP'));
+                              }}
+                              className="w-full bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 font-extrabold text-[10px] py-1.5 rounded-lg mb-2 flex items-center justify-center gap-1 transition-all"
+                            >
+                              <Download className="w-3 h-3" />
+                              Muat Turun Surat SPMP
+                            </button>
+                          )}
+
                           {alert.status === 'sent' ? (
                             <button
                               type="button"
@@ -1031,6 +1066,15 @@ export default function StudentDashboard() {
                             <span className="text-slate-500">{presentCount}/{totalSessions} Kuliah</span>
                           </div>
                         </div>
+
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); handleLeaveCourse(course.id, course.code); }}
+                          className="mt-2 w-full text-[10px] text-red-400 hover:text-red-600 hover:bg-red-50 font-bold py-1 rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1 border border-transparent hover:border-red-100"
+                          title="Keluar dari kursus ini"
+                        >
+                          <XCircle className="w-3 h-3" /> Keluar Kursus
+                        </button>
                       </div>
                     );
                   })}

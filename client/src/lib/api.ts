@@ -86,6 +86,8 @@ export interface AttendanceAlert {
   type: 'email' | 'in_app' | 'both';
   message: string;
   status: 'sent' | 'read';
+  spmpLetterUrl?: string;
+  spmpLetterName?: string;
 }
 
 // Snake→camelCase conversion
@@ -195,6 +197,22 @@ export async function deleteCourse(id: string) {
 
 export async function enrollInCourse(courseId: string) {
   return apiFetch<{ success: boolean }>(`/courses/${courseId}/enroll`, { method: 'POST' });
+}
+
+export async function unenrollFromCourse(courseId: string) {
+  return apiFetch<{ success: boolean }>(`/courses/${courseId}/unenroll`, { method: 'DELETE' });
+}
+
+export async function fetchCourseStudents(courseId: string) {
+  const data = await apiFetch<{ students: unknown[] }>(`/courses/${courseId}/students`);
+  return normalizeArray<{
+    id: string; name: string; email: string;
+    matricNo: string; classGroup: string; avatar: string;
+  }>(data.students);
+}
+
+export async function removeStudentFromCourse(courseId: string, studentId: string) {
+  return apiFetch<{ success: boolean }>(`/courses/${courseId}/students/${studentId}`, { method: 'DELETE' });
 }
 
 export async function scanQRCode(code: string) {
@@ -323,4 +341,44 @@ export async function uploadEvidence(recordId: string, file: File) {
     body: file,
   });
   return data;
+}
+
+export async function uploadStorageFile(key: string, file: File) {
+  const url = `${API_BASE}/storage/upload/${encodeURIComponent(key)}`;
+  const res = await fetch(url, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': file.type,
+      ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+    },
+    body: file,
+  });
+  if (!res.ok) {
+    throw new Error(`Upload failed: ${res.statusText}`);
+  }
+  return await res.json() as { success: boolean; key: string };
+}
+
+export async function downloadStorageFile(key: string, fileName: string) {
+  const url = `${API_BASE}/storage/download/${encodeURIComponent(key)}`;
+  const res = await fetch(url, {
+    method: 'GET',
+    headers: {
+      ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+    }
+  });
+  
+  if (!res.ok) {
+    throw new Error(`Download failed: ${res.statusText}`);
+  }
+  
+  const blob = await res.blob();
+  const objectUrl = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = objectUrl;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  window.URL.revokeObjectURL(objectUrl);
 }

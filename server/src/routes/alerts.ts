@@ -38,16 +38,17 @@ alerts.post('/', requirePolicy('canSendAlerts'), async (c) => {
     studentId: string; studentName: string; studentEmail: string;
     courseCode: string; courseName: string; attendanceRate: number;
     threshold: number; type?: 'email' | 'in_app' | 'both'; message: string;
+    spmpLetterUrl?: string; spmpLetterName?: string;
   }>();
 
   const id = crypto.randomUUID();
   const timestamp = new Date().toISOString();
 
   await c.env.DB.prepare(
-    `INSERT INTO alerts (id, student_id, course_code, attendance_rate, threshold, timestamp, type, message, status)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'sent')`
+    `INSERT INTO alerts (id, student_id, course_code, attendance_rate, threshold, timestamp, type, message, status, spmp_letter_url, spmp_letter_name)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'sent', ?, ?)`
   ).bind(id, body.studentId, body.courseCode, body.attendanceRate, body.threshold,
-    timestamp, body.type || 'both', body.message).run();
+    timestamp, body.type || 'both', body.message, body.spmpLetterUrl || '', body.spmpLetterName || '').run();
 
   const alert = await c.env.DB.prepare('SELECT * FROM alerts WHERE id = ?').bind(id).first();
   return c.json({ alert }, 201);

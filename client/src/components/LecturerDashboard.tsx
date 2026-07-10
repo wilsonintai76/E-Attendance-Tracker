@@ -20,6 +20,8 @@ import ReviewAppealModal from './lecturer/modals/ReviewAppealModal';
 import BulkAttendanceModal from './lecturer/modals/BulkAttendanceModal';
 import RegisterCourseModal from './lecturer/modals/RegisterCourseModal';
 import CreateSessionModal from './lecturer/modals/CreateSessionModal';
+import SendWarningModal from './lecturer/modals/SendWarningModal';
+import ManageStudentsModal from './lecturer/modals/ManageStudentsModal';
 
 
 export default function LecturerDashboard() {
@@ -36,6 +38,12 @@ export default function LecturerDashboard() {
   );
   const [isSendingBulk, setIsSendingBulk] = useState(false);
   const [sendingAlertKey, setSendingAlertKey] = useState<string | null>(null);
+  const [showWarningModal, setShowWarningModal] = useState(false);
+  const [selectedStudentForWarning, setSelectedStudentForWarning] = useState<any>(null);
+
+  // Manage Students modal state
+  const [showManageStudentsModal, setShowManageStudentsModal] = useState(false);
+  const [manageStudentsCourse, setManageStudentsCourse] = useState<Course | null>(null);
 
   // Course Management Form States
   const [regCode, setRegCode] = useState('');
@@ -659,7 +667,7 @@ export default function LecturerDashboard() {
     return result;
   };
 
-  const handleSendWarningAlert = (item: any, channel: 'email' | 'in_app' | 'both') => {
+  const handleSendWarningAlert = async (item: any, channel: 'email' | 'in_app' | 'both', file?: File) => {
     const alertKey = `${item.studentId}-${item.courseCode}`;
     setSendingAlertKey(alertKey);
 
@@ -671,7 +679,17 @@ export default function LecturerDashboard() {
       .replace(/{attendance_rate}/g, item.rate.toString())
       .replace(/{threshold}/g, attendanceThreshold.toString());
 
-    setTimeout(() => {
+    try {
+      let spmpLetterUrl = '';
+      let spmpLetterName = '';
+
+      if (file) {
+        const fileKey = `spmp-letters/${Date.now()}-${file.name}`;
+        await api.uploadStorageFile(fileKey, file);
+        spmpLetterUrl = fileKey; // Assuming backend wants the key
+        spmpLetterName = file.name;
+      }
+
       const newAlert: AttendanceAlert = {
         id: `alert-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
         studentId: item.studentId,
@@ -684,12 +702,13 @@ export default function LecturerDashboard() {
         timestamp: new Date().toISOString(),
         type: channel,
         message: formattedMessage,
-        status: 'sent' as const
+        status: 'sent' as const,
+        spmpLetterUrl,
+        spmpLetterName
       };
 
       setAlerts([newAlert, ...alerts]);
-      api.createAlert(newAlert).catch(() => {});
-      setSendingAlertKey(null);
+      await api.createAlert(newAlert);
       
       if (channel === 'email') {
         toast.success(`Emel amaran dihantar ke ${item.studentEmail}!`);
@@ -698,7 +717,13 @@ export default function LecturerDashboard() {
       } else {
         toast.success(`Amaran berjaya dipancarkan menerusi Emel & In-App kepada ${item.studentName}!`);
       }
-    }, 800);
+    } catch (err: any) {
+      toast.error(err.message || 'Gagal menghantar amaran');
+    } finally {
+      setSendingAlertKey(null);
+      setShowWarningModal(false);
+      setSelectedStudentForWarning(null);
+    }
   };
 
   const handleSendBulkWarnings = () => {
@@ -1537,6 +1562,17 @@ export default function LecturerDashboard() {
                               <QrCode className="w-3.5 h-3.5" />
                               Papar Kod QR Kursus (Course QR)
                             </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setManageStudentsCourse(course);
+                                setShowManageStudentsModal(true);
+                              }}
+                              className="w-full mt-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-extrabold py-2 px-3 rounded-xl text-[10px] flex items-center justify-center gap-1.5 transition-all cursor-pointer border border-emerald-200/40 shadow-3xs"
+                            >
+                              <Users className="w-3.5 h-3.5" />
+                              Urus Pelajar (Manage Students)
+                            </button>
                           </div>
                         </div>
                       ))}
@@ -1696,7 +1732,10 @@ export default function LecturerDashboard() {
                                       <button
                                         type="button"
                                         disabled={isSendingThis}
-                                        onClick={() => handleSendWarningAlert(item, 'both')}
+                                        onClick={() => {
+                                          setSelectedStudentForWarning(item);
+                                          setShowWarningModal(true);
+                                        }}
                                         className="bg-amber-600 hover:bg-amber-700 active:scale-95 disabled:bg-amber-400 text-white font-extrabold text-[10px] px-3 py-1.5 rounded-xl shadow-xs transition-all cursor-pointer flex items-center gap-1"
                                       >
                                         {isSendingThis ? (
@@ -1748,7 +1787,10 @@ export default function LecturerDashboard() {
                                 <button
                                   type="button"
                                   disabled={isSendingThis}
-                                  onClick={() => handleSendWarningAlert(item, 'both')}
+                                  onClick={() => {
+                                    setSelectedStudentForWarning(item);
+                                    setShowWarningModal(true);
+                                  }}
                                   className="w-full bg-amber-600 hover:bg-amber-700 active:scale-95 disabled:bg-amber-400 text-white font-black text-xs py-2.5 px-4 rounded-xl shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1.5"
                                 >
                                   {isSendingThis ? (
@@ -1992,6 +2034,18 @@ export default function LecturerDashboard() {
         onReviewAppeal={handleReviewAppeal}
       />
 
+      <SendWarningModal
+        show={showWarningModal}
+        student={selectedStudentForWarning}
+        attendanceThreshold={attendanceThreshold}
+        onClose={() => {
+          setShowWarningModal(false);
+          setSelectedStudentForWarning(null);
+        }}
+        onConfirm={(file) => handleSendWarningAlert(selectedStudentForWarning, 'both', file)}
+        isSending={!!sendingAlertKey}
+      />
+
       <CourseQRModal
         show={showCourseQRModal}
         course={selectedCourseForQR}
@@ -2055,6 +2109,19 @@ export default function LecturerDashboard() {
           handleCloseCourseModal();
         }}
       />
+
+      {showManageStudentsModal && manageStudentsCourse && (
+        <ManageStudentsModal
+          courseId={manageStudentsCourse.id}
+          courseCode={manageStudentsCourse.code}
+          courseName={manageStudentsCourse.name}
+          onClose={() => {
+            setShowManageStudentsModal(false);
+            setManageStudentsCourse(null);
+          }}
+          onStudentRemoved={() => refreshData()}
+        />
+      )}
 
       <VersionDisplay />
 

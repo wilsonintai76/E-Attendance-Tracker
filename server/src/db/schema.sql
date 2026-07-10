@@ -90,6 +90,8 @@ CREATE TABLE IF NOT EXISTS alerts (
   type TEXT NOT NULL DEFAULT 'both' CHECK(type IN ('email', 'in_app', 'both')),
   message TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'sent' CHECK(status IN ('sent', 'read')),
+  spmp_letter_url TEXT DEFAULT '',
+  spmp_letter_name TEXT DEFAULT '',
   created_at TEXT DEFAULT (datetime('now'))
 );
 

@@ -147,4 +147,62 @@ courses.post('/scan-qr', requirePolicy('canCheckIn'), async (c) => {
   return c.json({ course, alreadyEnrolled: false });
 });
 
+// DELETE /api/courses/:id/unenroll — student unenrolls themselves from a course
+courses.delete('/:id/unenroll', requirePolicy('canCheckIn'), async (c) => {
+  const user = c.get('user')!;
+  const courseId = c.req.param('id');
+
+  const enrollment = await c.env.DB.prepare(
+    'SELECT * FROM course_enrollments WHERE course_id = ? AND student_id = ?'
+  ).bind(courseId, user.id).first();
+
+  if (!enrollment) {
+    return c.json({ error: 'Not enrolled in this course' }, 404);
+  }
+
+  await c.env.DB.prepare(
+    'DELETE FROM course_enrollments WHERE course_id = ? AND student_id = ?'
+  ).bind(courseId, user.id).run();
+
+  return c.json({ success: true });
+});
+
+// GET /api/courses/:id/students — lecturer views enrolled students for a course
+courses.get('/:id/students', requirePolicy('canCreateCourses'), async (c) => {
+  const courseId = c.req.param('id');
+
+  const course = await c.env.DB.prepare('SELECT * FROM courses WHERE id = ?').bind(courseId).first();
+  if (!course) return c.json({ error: 'Course not found' }, 404);
+
+  const rows = await c.env.DB.prepare(
+    `SELECT u.id, u.name, u.email, u.matric_no, u.class_group, u.avatar
+     FROM users u
+     INNER JOIN course_enrollments ce ON u.id = ce.student_id
+     WHERE ce.course_id = ?
+     ORDER BY u.name`
+  ).bind(courseId).all();
+
+  return c.json({ students: rows.results });
+});
+
+// DELETE /api/courses/:id/students/:studentId — lecturer removes a student from a course
+courses.delete('/:id/students/:studentId', requirePolicy('canCreateCourses'), async (c) => {
+  const courseId = c.req.param('id');
+  const studentId = c.req.param('studentId');
+
+  const enrollment = await c.env.DB.prepare(
+    'SELECT * FROM course_enrollments WHERE course_id = ? AND student_id = ?'
+  ).bind(courseId, studentId).first();
+
+  if (!enrollment) {
+    return c.json({ error: 'Student is not enrolled in this course' }, 404);
+  }
+
+  await c.env.DB.prepare(
+    'DELETE FROM course_enrollments WHERE course_id = ? AND student_id = ?'
+  ).bind(courseId, studentId).run();
+
+  return c.json({ success: true });
+});
+
 export default courses;
