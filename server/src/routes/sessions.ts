@@ -227,43 +227,56 @@ sessions.get('/:id/students', requirePolicy('canManageSessions'), async (c) => {
   return c.json({ students: students.results });
 });
 
-// POST /api/sessions/:id/bulk-attendance — mark multiple students (absent→present)
+// POST /api/sessions/:id/bulk-attendance — backdated: mark absent students, rest auto-present
 sessions.post('/:id/bulk-attendance', requirePolicy('canManageSessions'), async (c) => {
   const id = c.req.param('id');
-  const body = await c.req.json<{ studentIds: string[] }>();
+  const body = await c.req.json<{ absentIds: string[] }>();
 
-  const session = await c.env.DB.prepare('SELECT id FROM attendance_sessions WHERE id = ?').bind(id).first();
+  const session = await c.env.DB.prepare(
+    'SELECT id, course_id, class_group FROM attendance_sessions WHERE id = ?'
+  ).bind(id).first<{ id: string; course_id: string; class_group: string }>();
   if (!session) return c.json({ error: 'Session not found' }, 404);
 
-  const timestamp = new Date().toISOString();
-  let count = 0;
+  // Fetch ALL enrolled students for this course + class group
+  const enrolled = await c.env.DB.prepare(
+    `SELECT u.id FROM users u
+     INNER JOIN course_enrollments ce ON u.id = ce.student_id
+     WHERE ce.course_id = ? AND u.class_group = ?
+     ORDER BY u.name`
+  ).bind(session.course_id, session.class_group).all<{ id: string }>();
 
-  for (const studentId of body.studentIds) {
-    // Check if record already exists
+  const absentSet = new Set(body.absentIds);
+  const timestamp = new Date().toISOString();
+  let presentCount = 0;
+  let absentCount = 0;
+
+  for (const student of enrolled.results) {
+    // Skip if record already exists
     const existing = await c.env.DB.prepare(
       'SELECT id FROM attendance_records WHERE session_id = ? AND student_id = ?'
-    ).bind(id, studentId).first();
+    ).bind(id, student.id).first();
+    if (existing) continue;
 
-    if (!existing) {
-      const student = await c.env.DB.prepare('SELECT id FROM users WHERE id = ?').bind(studentId).first();
-      if (student) {
-        await c.env.DB.prepare(
-          `INSERT INTO attendance_records (id, session_id, student_id, timestamp, status, approval_status)
-           VALUES (?, ?, ?, ?, 'present', 'none')`
-        ).bind(crypto.randomUUID(), id, studentId, timestamp).run();
-        count++;
-      }
-    }
+    const isAbsent = absentSet.has(student.id);
+    const recordId = crypto.randomUUID();
+
+    await c.env.DB.prepare(
+      `INSERT INTO attendance_records (id, session_id, student_id, timestamp, status, approval_status)
+       VALUES (?, ?, ?, ?, ?, 'none')`
+    ).bind(recordId, id, student.id, timestamp, isAbsent ? 'absent' : 'present').run();
+
+    if (isAbsent) absentCount++; else presentCount++;
   }
 
   // Update student count
-  if (count > 0) {
+  const totalNew = presentCount + absentCount;
+  if (totalNew > 0) {
     await c.env.DB.prepare(
       'UPDATE attendance_sessions SET student_count = student_count + ? WHERE id = ?'
-    ).bind(count, id).run();
+    ).bind(totalNew, id).run();
   }
 
-  return c.json({ created: count });
+  return c.json({ created: totalNew, present: presentCount, absent: absentCount });
 });
 
 export default sessions;

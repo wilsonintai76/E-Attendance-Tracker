@@ -75,7 +75,7 @@ export default function LecturerDashboard() {
   const [showBulkAttendanceModal, setShowBulkAttendanceModal] = useState(false);
   const [bulkSession, setBulkSession] = useState<AttendanceSession | null>(null);
   const [enrolledStudents, setEnrolledStudents] = useState<any[]>([]);
-  const [absentChecked, setAbsentChecked] = useState<Set<string>>(new Set());
+  const [markedAbsent, setMarkedAbsent] = useState<Set<string>>(new Set());
   const [isLoadingStudents, setIsLoadingStudents] = useState(false);
   const [isSubmittingBulk, setIsSubmittingBulk] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -462,7 +462,7 @@ export default function LecturerDashboard() {
   // Open manual attendance modal
   const handleOpenBulkAttendance = async (sess: AttendanceSession) => {
     setBulkSession(sess);
-    setAbsentChecked(new Set());
+    setMarkedAbsent(new Set());
     setShowBulkAttendanceModal(true);
     setIsLoadingStudents(true);
     try {
@@ -475,8 +475,8 @@ export default function LecturerDashboard() {
     }
   };
 
-  const toggleAbsentCheck = (studentId: string) => {
-    setAbsentChecked(prev => {
+  const toggleAbsent = (studentId: string) => {
+    setMarkedAbsent(prev => {
       const next = new Set(prev);
       next.has(studentId) ? next.delete(studentId) : next.add(studentId);
       return next;
@@ -484,11 +484,11 @@ export default function LecturerDashboard() {
   };
 
   const handleSubmitBulkAttendance = async () => {
-    if (!bulkSession || absentChecked.size === 0) return;
+    if (!bulkSession) return;
     setIsSubmittingBulk(true);
     try {
-      const result = await api.bulkMarkAttendance(bulkSession.id, Array.from(absentChecked));
-      toast.success(`Marked ${result.created} student(s) as present.`);
+      const result = await api.bulkMarkAttendance(bulkSession.id, Array.from(markedAbsent));
+      toast.success(`Disimpan: ${result.present} Hadir, ${result.absent} Absent.`);
       setShowBulkAttendanceModal(false);
       refreshData();
     } catch {
@@ -2073,10 +2073,10 @@ export default function LecturerDashboard() {
         bulkSession={bulkSession}
         isLoadingStudents={isLoadingStudents}
         enrolledStudents={enrolledStudents}
-        absentChecked={absentChecked}
+        markedAbsent={markedAbsent}
         isSubmittingBulk={isSubmittingBulk}
         onClose={() => setShowBulkAttendanceModal(false)}
-        onToggleAbsentCheck={toggleAbsentCheck}
+        onToggleAbsent={toggleAbsent}
         onSubmitBulkAttendance={handleSubmitBulkAttendance}
       />
 

@@ -267,9 +267,9 @@ export async function fetchSessionStudents(sessionId: string) {
   return normalizeArray<{ id: string; name: string; email: string; matric_no: string; class_group: string; record_status: string; record_id: string | null }>(data.students);
 }
 
-export async function bulkMarkAttendance(sessionId: string, studentIds: string[]) {
-  return apiFetch<{ created: number }>(`/sessions/${sessionId}/bulk-attendance`, {
-    method: 'POST', body: JSON.stringify({ studentIds }),
+export async function bulkMarkAttendance(sessionId: string, absentIds: string[]) {
+  return apiFetch<{ created: number; present: number; absent: number }>(`/sessions/${sessionId}/bulk-attendance`, {
+    method: 'POST', body: JSON.stringify({ absentIds }),
   });
 }
 
